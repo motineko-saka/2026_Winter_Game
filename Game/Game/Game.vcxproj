@@ -144,6 +144,7 @@
     <ClCompile Include="Scr\GameSystem\Scene\GameClerScene\GameClerScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GameScene\GameScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GemeOverScene\GameOverScene.cpp" />
+    <ClCompile Include="Scr\GameSystem\Scene\MapScene\MapScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\PauseScene\PauseScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneBase.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneManager.cpp" />
@@ -171,6 +172,7 @@
     <ClInclude Include="Scr\GameSystem\Scene\GameClerScene\GameClerScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GameScene\GameScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GemeOverScene\GameOverScene.h" />
+    <ClInclude Include="Scr\GameSystem\Scene\MapScene\MapScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\PauseScene\PauseScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneBase.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneManager.h" />

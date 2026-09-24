@@ -3,6 +3,7 @@
 #include "../PauseScene/PauseScene.h"
 #include "../TitleScene/TitleScene.h"
 #include "../BattleScene/BattleScene.h"
+#include "../MapScene/MapScene.h"
 #include "../../../AppSystem/InputManager/InputManager.h"
 #include "../../Object/Player/Player.h"
 
@@ -46,6 +47,12 @@ void GameScene::Update(void)
 	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
 	{
 		SceneManager::GetInstance()->PushScene(std::make_shared<BattleScene>());
+	}
+
+	// ƒ}ƒbƒv‰æ–Ê‚É‘JˆÚ
+	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_M))
+	{
+		SceneManager::GetInstance()->PushScene(std::make_shared<MapScene>());
 	}
 
 	player_->Update();

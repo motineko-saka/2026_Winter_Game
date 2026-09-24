@@ -34,6 +34,7 @@ void BattleScene::Update(void)
 		SceneManager::GetInstance()->PushScene(std::make_shared<PauseScene>());
 	}
 
+	// ƒQ[ƒ€‰æ–Ê‚É–ß‚é
 	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
 	{
 		SceneManager::GetInstance()->PopScene();
