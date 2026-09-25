@@ -6,7 +6,7 @@ class MapScene : public SceneBase
 {
 public:
 
-	MapScene(void);				// コンストラクタ
+	MapScene(void);				    // コンストラクタ
 	~MapScene(void) override;		// デストラクタ
 
 public:
@@ -23,5 +23,5 @@ private:
 	int TITLE_SIZE_WID = 800;		// タイトル画像の横サイズ
 	int TITLE_SIZE_HIG = 600;		// タイトル画像の縦サイズ
 
-	int map_handle_ = -1;	// マップ画像のハンドル
+	int map_handle_ = -1;			// マップ画像のハンドル
 };

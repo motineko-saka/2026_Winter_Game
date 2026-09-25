@@ -6,8 +6,8 @@ class GameOverScene : public SceneBase
 {
 public:
 
-	GameOverScene(void);				// コンストラクタ
-	~GameOverScene(void) override;		// デストラクタ
+	GameOverScene(void);			// コンストラクタ
+	~GameOverScene(void) override;	// デストラクタ
 
 public:
 

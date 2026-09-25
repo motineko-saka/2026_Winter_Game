@@ -6,8 +6,8 @@ class GameClearScene : public SceneBase
 {
 public:
 
-	GameClearScene(void);				// コンストラクタ
-	~GameClearScene(void) override;		// デストラクタ
+	GameClearScene(void);			// コンストラクタ
+	~GameClearScene(void) override;	// デストラクタ
 
 public:
 

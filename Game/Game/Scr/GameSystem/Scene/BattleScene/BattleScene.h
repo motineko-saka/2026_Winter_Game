@@ -7,7 +7,7 @@ class BattleScene : public SceneBase
 public:
 
 	BattleScene(void);				// コンストラクタ
-	~BattleScene(void) override;		// デストラクタ
+	~BattleScene(void) override;	// デストラクタ
 
 public:
 
