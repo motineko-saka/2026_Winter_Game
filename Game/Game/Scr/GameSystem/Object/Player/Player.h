@@ -20,6 +20,10 @@ public:
 	void Draw(void) override;
 	void Delete(void) override;
 
+	// ƒ[ƒ‹ƒhÀ•W‚Ìæ“¾
+	int GetWorldPosX() const { return Utility::Round(image_.pos.x); }
+	int GetWorldPosY() const { return Utility::Round(image_.pos.y); }
+
 private:
 	// ó‘Ô‚ÌŠÖ”
 	static void StateNormal(ObjectBase& obj);

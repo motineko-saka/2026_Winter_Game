@@ -14,6 +14,7 @@ TitleScene::~TitleScene(void)
 
 void TitleScene::Init(void)
 {
+	Load();
 }
 
 void TitleScene::Load(void)
@@ -22,6 +23,7 @@ void TitleScene::Load(void)
 
 void TitleScene::LoadEnd(void)
 {
+	Init();
 }
 
 void TitleScene::Update(void)

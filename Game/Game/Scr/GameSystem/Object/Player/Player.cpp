@@ -5,6 +5,7 @@
 
 #include "../../../AppSystem/Application/Application.h"
 #include "../../../AppSystem/InputManager/InputManager.h"
+#include "../../../AppSystem/Camera/Camera2D.h"
 #include "../../../Utility/Utility.h"
 #include "../../Scene/SceneManager.h"
 #include "../../Scene/GameScene/GameScene.h"
@@ -49,12 +50,12 @@ void Player::Init(void)
 void Player::Load(void)
 {
 	animHandle_[IDLE]	 = LoadGraph("Data/Image/Player/Idle.png");
-	animHandle_[WALK_A]	 = LoadGraph("Data/Image/Player/Walk1.png");
-	animHandle_[WALK_B]	 = LoadGraph("Data/Image/Player/Walk2.png");
-	animHandle_[UP_A]	 = LoadGraph("Data/Image/Player/Back1.png");
-	animHandle_[UP_B]	 = LoadGraph("Data/Image/Player/Back2.png");
-	animHandle_[DOWN_A] = LoadGraph("Data/Image/Player/Flont1.png");
-	animHandle_[DOWN_B] = LoadGraph("Data/Image/Player/Flont2.png");
+	animHandle_[WALK_A]	 = LoadGraph("Data/Image/Player/Beside_1.png");
+	animHandle_[WALK_B]	 = LoadGraph("Data/Image/Player/Beside_2.png");
+	animHandle_[UP_A]	 = LoadGraph("Data/Image/Player/Back_Walk_1.png");
+	animHandle_[UP_B]	 = LoadGraph("Data/Image/Player/Back_Walk_2.png");
+	animHandle_[DOWN_A] = LoadGraph("Data/Image/Player/Walk_1.png");
+	animHandle_[DOWN_B] = LoadGraph("Data/Image/Player/Walk_2.png");
 }
 
 void Player::LoadEnd(void)

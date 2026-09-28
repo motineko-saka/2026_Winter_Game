@@ -4,6 +4,7 @@
 
 #include "../FpsControl/FpsControl.h"
 #include "../InputManager/InputManager.h"
+#include "../Camera/Camera2D.h"
 #include "../../GameSystem/Scene/SceneManager.h"
 
 Application* Application::instance_ = nullptr;
@@ -58,6 +59,9 @@ void Application::Init(void)
 	InputManager::CreateInstance();
 	InputManager::GetInstance()->Init();
 
+	// Camera2D のシングルトンを生成
+	Camera2D::CreateInstance();
+
 	// シーン管理初期化
 	SceneManager::CreateInstance();
 	SceneManager::GetInstance()->Init();
@@ -99,6 +103,9 @@ void Application::Release(void)
 {
 	// 入力制御削除
 	InputManager::GetInstance()->DeleteInstance();
+
+	// Camera2D を破棄
+	Camera2D::DeleteInstance();
 
 	// シーン管理解放・削除
 	SceneManager::GetInstance()->Release();
