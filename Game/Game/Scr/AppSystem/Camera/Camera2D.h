@@ -7,15 +7,19 @@ class Player;
 class Camera2D
 {
 public:
+
 	// シングルトン（生成・取得・削除）
 	static void CreateInstance(void) { if (instance_ == nullptr) { instance_ = new Camera2D(); } };
 	static Camera2D* GetInstance(void) { return instance_; };
 	static void DeleteInstance(void) { if (instance_ != nullptr) { delete instance_; instance_ = nullptr; } }
 
 private:
+
 	// 静的インスタンス
 	static Camera2D* instance_;
+
 private:
+
 	// デフォルトコンストラクタをprivateにして、外部から生成できない様にする
 	Camera2D(void);
 	// デストラクタも同様
@@ -28,6 +32,7 @@ private:
 	Camera2D& operator=(Camera2D&&) = delete;
 
 private:
+
 	// クラス内定数
 	static constexpr int GAME_SIZE_X = 6400;
 	static constexpr int GAME_SIZE_Y = 6400;
@@ -53,6 +58,7 @@ public:
 	int WorldToScreenY(int worldY) const { return worldY - screenPosY_; }
 
 private:
+
 	// 変数
 	int screenPosX_ = 0;
 	int screenPosY_ = 0;

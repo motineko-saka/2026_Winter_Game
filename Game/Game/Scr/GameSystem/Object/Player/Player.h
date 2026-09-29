@@ -1,7 +1,6 @@
 #pragma once
 #include "PlayerParam.h"
 #include "../ObjectBase.h"
-
 #include "../../../Common/Common.h"
 #include "../../../Utility/Utility.h"
 
@@ -19,6 +18,8 @@ public:
 	void LoadEnd(void) override;
 	void Draw(void) override;
 	void Delete(void) override;
+
+public:
 
 	// ワールド座標の取得
 	int GetWorldPosX() const { return Utility::Round(image_.pos.x); }
@@ -41,12 +42,17 @@ private:
 	void MoveController(void) override;
 	void MoveEnd(void) override;
 
-private:
-	// 移動計算用の座標
-	Vector2F movedPos_;
+public:
 
-	// 変数(画像は別で持つ)
-	Image image_;
+	Vector2 GetPlayerPos(void) { return playerPos_; }
+
+private:
+	
+	Vector2F movedPos_;					// 移動計算用の座標			
+
+	Image image_;						// 変数(画像は別で持つ)
+
+	Vector2 playerPos_;					// プレイヤー表示座標
 
 	// アニメーション
 	PlayerAnimation curPlayerAnim_;		// 現在のアニメーション

@@ -64,9 +64,13 @@ void Player::LoadEnd(void)
 
 void Player::Draw(void)
 {
+	// 修正：ワールド座標 → スクリーン座標 に変換して描画
+	int screenX = Camera2D::GetInstance()->WorldToScreenX(GetWorldPosX());
+	int screenY = Camera2D::GetInstance()->WorldToScreenY(GetWorldPosY());
+
 	DrawRotaGraph(
-		image_.pos.x,
-		image_.pos.y,
+		screenX,
+		screenY,
 		image_.scale,
 		image_.angle,
 		animHandle_[curPlayerAnim_],
