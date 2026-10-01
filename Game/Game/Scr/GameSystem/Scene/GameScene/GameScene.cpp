@@ -20,6 +20,8 @@ GameScene::~GameScene(void)
 
 void GameScene::Init(void)
 {
+
+	//mainScreenId_ = MakeScreen(Application::SCREEN_SIZE_X, Application::SCREEN_SIZE_Y, true);
 	StageManager::GetInstance()->Init();
 
 	player_->Init();
@@ -75,8 +77,24 @@ void GameScene::Update(void)
 
 void GameScene::Draw(void)
 {
+
+	// ‰æ–Ê‚ÌƒY[ƒ€ˆ—
+	//SetDrawScreen(mainScreenId_);
+
+	//ClearDrawScreen();
+
 	StageManager::GetInstance()->Draw();
 	player_->Draw();
+
+	//SetDrawScreen(DX_SCREEN_BACK);
+
+	//ClearDrawScreen();
+
+	//DrawRotaGraph(
+	//	Application::SCREEN_SIZE_X / 2, 
+	//	Application::SCREEN_SIZE_Y / 2, 
+	//	2.0, 0.0, mainScreenId_, true);
+
 }
 
 void GameScene::Release(void)

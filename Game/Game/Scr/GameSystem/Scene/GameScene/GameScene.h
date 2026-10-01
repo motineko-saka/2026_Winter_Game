@@ -22,5 +22,7 @@ public:
 
 private:
 
+	int mainScreenId_;
+
 	Player* player_;
 };

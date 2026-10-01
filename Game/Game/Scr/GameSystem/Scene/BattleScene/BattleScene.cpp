@@ -44,11 +44,6 @@ void BattleScene::Update(void)
 void BattleScene::Draw(void)
 {
 	DrawBox(0, 0, 640, 480, GetColor(0, 255, 0), TRUE);
-
-	//SetDrawBlendMode(DX_BLENDMODE_ALPHA, 127);
-	//DrawBox(0, 0, Application::SCREEN_SIZE_X, Application::SCREEN_SIZE_Y, 0x000000, true);
-	//SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
-
 }
 
 void BattleScene::Release(void)

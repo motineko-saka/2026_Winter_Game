@@ -117,7 +117,7 @@ bool StageManager::LoadStageList(const std::string& listFilename)
 		if (line.empty() || line[0] == '#') continue; // コメント行スキップ
 
 		std::vector<std::string> strSplit = Utility::Split(line, ',');
-		if (strSplit.size() >= 4) {
+		if (strSplit.size() >= 8) {
 			StageInfo info;
 			info.id = std::stoi(strSplit[0]);
 			info.groundCsv = strSplit[1];
