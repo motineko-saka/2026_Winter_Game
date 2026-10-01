@@ -11,6 +11,8 @@ StageManager* StageManager::instance_ = nullptr;
 
 StageManager::StageManager()
 {
+	// 初期状態では空にしておく
+	mapChipHandle_.clear();
 }
 
 StageManager::~StageManager()
@@ -22,17 +24,13 @@ void StageManager::Init()
 	Load();
 
 	// 初期マップを読み込む
-	ChangeMap("Data/Map/Mapcsv/gg.csv");
+	LoadStageList("Data/Map/Mapcsv/StageList.csv");
+
+	ChangeStage(0);
 }
 
 void StageManager::Load()
 {
-	int err = LoadDivGraph("Data/Image/Map/Mapchip.png", MAP_CHIP_ALL_NUM,
-		MAP_CHIP_NUM_X, MAP_CHIP_NUM_Y,
-		MAP_CHIP_SIZE_X, MAP_CHIP_SIZE_Y, mapChipHandle_);
-	if (err == -1) {
-		MessageBoxA(NULL, "マップチップ画像の読み込みに失敗しました", "エラー", MB_OK);
-	}
 }
 
 void StageManager::LoadEnd()
@@ -56,35 +54,39 @@ void StageManager::Draw()
 		for (int x = 0; x < currentMap.width; x++)
 		{
 			int index = y * currentMap.width + x;
-			int px = x * MAP_CHIP_SIZE_X;
-			int py = y * MAP_CHIP_SIZE_Y;
+			// 定数ではなく現在のチップサイズを使う
+			int px = x * currentChipSizeX;
+			int py = y * currentChipSizeY;
 
 			// まず「背景（地面）」レイヤーを描画
 			if (index < currentMap.groundTiles.size())
 			{
 				int chipNo = currentMap.groundTiles[index];
-				if (chipNo >= 0 && chipNo < MAP_CHIP_ALL_NUM)
+				if (chipNo >= 0 && chipNo < mapChipHandle_.size())
 				{
-					DrawGraph(
-						Camera2D::GetInstance()->WorldToScreenX(px),
-						Camera2D::GetInstance()->WorldToScreenY(py),
-						mapChipHandle_[chipNo],
-						true);
+					if (mapChipHandle_[chipNo] != -1) {
+						DrawGraph(
+							Camera2D::GetInstance()->WorldToScreenX(px),
+							Camera2D::GetInstance()->WorldToScreenY(py),
+							mapChipHandle_[chipNo],
+							true);
+					}
 				}
 			}
 
-			// その上から「オブジェクト（木や建物など）」レイヤーを重ねて描画 
+			// その上から「オブジェクト」レイヤーを重ねて描画 
 			if (index < currentMap.objectTiles.size())
 			{
 				int objChipNo = currentMap.objectTiles[index];
-				// Tiledで何も置いていないマス（空欄）は -1 や 0 になるため、有効なチップのみ描画
-				if (objChipNo >= 0 && objChipNo < MAP_CHIP_ALL_NUM)
+				if (objChipNo >= 0 && objChipNo < mapChipHandle_.size())
 				{
-					DrawGraph(
-						Camera2D::GetInstance()->WorldToScreenX(px),
-						Camera2D::GetInstance()->WorldToScreenY(py),
-						mapChipHandle_[objChipNo],
-						true);
+					if (mapChipHandle_[objChipNo] != -1) {
+						DrawGraph(
+							Camera2D::GetInstance()->WorldToScreenX(px),
+							Camera2D::GetInstance()->WorldToScreenY(py),
+							mapChipHandle_[objChipNo],
+							true);
+					}
 				}
 			}
 		}
@@ -93,20 +95,49 @@ void StageManager::Draw()
 
 void StageManager::Release()
 {
-	for (int i = 0; i < MAP_CHIP_ALL_NUM; i++) {
-		if (mapChipHandle_[i] != -1) {
-			DeleteGraph(mapChipHandle_[i]);
-			mapChipHandle_[i] = -1;
+	for (int handle : mapChipHandle_) {
+		if (handle != -1) {
+			DeleteGraph(handle);
 		}
 	}
+	mapChipHandle_.clear();
+}
+
+bool StageManager::LoadStageList(const std::string& listFilename)
+{
+	std::ifstream ifs(listFilename);
+	if (!ifs) {
+		MessageBoxA(NULL, "ステージリストファイルが開けませんでした", "エラー", MB_OK);
+		return false;
+	}
+
+	stageListMap.clear();
+	std::string line;
+	while (getline(ifs, line)) {
+		if (line.empty() || line[0] == '#') continue; // コメント行スキップ
+
+		std::vector<std::string> strSplit = Utility::Split(line, ',');
+		if (strSplit.size() >= 4) {
+			StageInfo info;
+			info.id = std::stoi(strSplit[0]);
+			info.groundCsv = strSplit[1];
+			info.objectCsv = strSplit[2];
+			info.chipImagePath = strSplit[3];
+			info.chipSizeX = std::stoi(strSplit[4]);
+			info.chipSizeY = std::stoi(strSplit[5]);
+			info.chipNumX = std::stoi(strSplit[6]);
+			info.chipNumY = std::stoi(strSplit[7]);
+
+			stageListMap[info.id] = info;
+		}
+	}
+	return true;
 }
 
 bool StageManager::LoadSingleCsv(const std::string& filename, int& outWidth, int& outHeight, std::vector<int>& outTiles)
 {
-	std::ifstream ifs = std::ifstream(filename);
-	if (!ifs) {
-		return false; // ファイルが開けない場合はfalseを返す
-	}
+	std::ifstream ifs(filename);
+	if (!ifs) return false;
 
 	std::string line;
 	std::vector<std::vector<int>> tempGrid;
@@ -134,7 +165,6 @@ bool StageManager::LoadSingleCsv(const std::string& filename, int& outWidth, int
 			outTiles[y * outWidth + x] = tempGrid[y][x];
 		}
 	}
-
 	return true;
 }
 
@@ -163,17 +193,12 @@ bool StageManager::LoadMapData(const std::string& filename, MapData& outMap)
 
 bool StageManager::LoadWarpData(const std::string& filename)
 {
-	warpList.clear(); // 前のマップのワープ情報をクリア
-
+	warpList.clear();
 	std::ifstream ifs = std::ifstream(filename);
-	if (!ifs) {
-		// ワープが存在しないマップ（普通の家の中など）ならファイルがなくてもエラーにせず終了
-		return false;
-	}
+	if (!ifs) return false;
 
 	std::string line;
 	while (getline(ifs, line)) {
-		// 空行や、# から始まるコメント行はスキップ
 		if (line.empty() || line[0] == '#') continue;
 
 		std::vector<std::string> strSplit = Utility::Split(line, ',');
@@ -181,49 +206,76 @@ bool StageManager::LoadWarpData(const std::string& filename)
 			WarpData warp;
 			warp.x = std::stoi(strSplit[0]);
 			warp.y = std::stoi(strSplit[1]);
-			warp.nextMap = strSplit[2];
+			warp.nextStageId = std::stoi(strSplit[2]); // ステージIDとして数値で格納
 			warp.destX = std::stoi(strSplit[3]);
 			warp.destY = std::stoi(strSplit[4]);
-
 			warpList.push_back(warp);
 		}
 	}
 	return true;
 }
 
-void StageManager::ChangeMap(const std::string& filename)
+void StageManager::ChangeStage(int stageId)
 {
-	MapData newMap;
-	if (LoadMapData(filename, newMap)) {
-		currentMap = newMap; // マップデータの更新
-
-		// マップファイル名から自動的に対応するワープファイル名を生成して読み込む
-		// 例: "Data/Map/gg.csv" -> "Data/Map/gg_warp.csv"
-		std::string warpFilename = filename;
-		size_t dotPos = warpFilename.find_last_of('.');
-		if (dotPos != std::string::npos) {
-			warpFilename.insert(dotPos, "_warp");
-		}
-
-		// ワープデータの読み込みを試みる（ファイルが無くてもクラッシュしないようにする）
-		LoadWarpData(warpFilename);
+	if (stageListMap.find(stageId) == stageListMap.end()) {
+		MessageBoxA(NULL, "指定されたステージIDが見つかりません", "エラー", MB_OK);
+		return;
 	}
+
+	StageInfo info = stageListMap[stageId];
+
+	// ステージごとのチップ情報を更新
+	currentChipSizeX = info.chipSizeX;
+	currentChipSizeY = info.chipSizeY;
+	currentChipNumX = info.chipNumX;
+	currentChipNumY = info.chipNumY;
+
+	// 古い画像を解放し、新しい分割数に合わせて配列サイズを確保
+	Release();
+	int allNum = currentChipNumX * currentChipNumY;
+	mapChipHandle_.resize(allNum, -1);
+
+	// 動的なサイズと分割数で画像をロード
+	int err = LoadDivGraph(info.chipImagePath.c_str(), allNum,
+		currentChipNumX, currentChipNumY,
+		currentChipSizeX, currentChipSizeY, mapChipHandle_.data());
+	if (err == -1) {
+		MessageBoxA(NULL, "マップチップ画像の読み込みに失敗しました", "エラー", MB_OK);
+	}
+
+	// 背景（地面）CSVの読み込み
+	MapData newMap;
+	if (!LoadSingleCsv(info.groundCsv, newMap.width, newMap.height, newMap.groundTiles)) {
+		MessageBoxA(NULL, "背景マップCSVの読み込みに失敗しました", "エラー", MB_OK);
+		return;
+	}
+
+	// オブジェクトCSVの読み込み
+	int objW, objH;
+	LoadSingleCsv(info.objectCsv, objW, objH, newMap.objectTiles);
+
+	currentMap = newMap;
+
+	// ワープデータの読み込み
+	std::string warpFilename = info.groundCsv;
+	size_t dotPos = warpFilename.find_last_of('.');
+	if (dotPos != std::string::npos) {
+		warpFilename.insert(dotPos, "_warp");
+	}
+	LoadWarpData(warpFilename);
 }
 
-bool StageManager::CheckWarp(float playerX, float playerY, std::string& outNextMap, float& outNewPx, float& outNewPy)
+bool StageManager::CheckWarp(float playerX, float playerY, int& outNextStageId, float& outNewPx, float& outNewPy)
 {
-	// プレイヤーのピクセル座標を「何マス目か」に変換
-	int tileX = static_cast<int>(playerX) / MAP_CHIP_SIZE_X;
-	int tileY = static_cast<int>(playerY) / MAP_CHIP_SIZE_Y;
+	// 現在のチップサイズを使って判定
+	int tileX = static_cast<int>(playerX) / currentChipSizeX;
+	int tileY = static_cast<int>(playerY) / currentChipSizeY;
 
-	// 現在のマップのワープリストを総チェック
 	for (const auto& warp : warpList) {
 		if (warp.x == tileX && warp.y == tileY) {
-			// 一致した！ 移動先情報を出力
-			outNextMap = warp.nextMap;
-			// マス座標をピクセル座標（ワールド座標）に変換して返す
-			outNewPx = static_cast<float>(warp.destX * MAP_CHIP_SIZE_X);
-			outNewPy = static_cast<float>(warp.destY * MAP_CHIP_SIZE_Y);
+			outNextStageId = warp.nextStageId;
+			outNewPx = static_cast<float>(warp.destX * currentChipSizeX);
+			outNewPy = static_cast<float>(warp.destY * currentChipSizeY);
 			return true;
 		}
 	}

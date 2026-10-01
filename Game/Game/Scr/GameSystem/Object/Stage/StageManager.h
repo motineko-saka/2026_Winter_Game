@@ -2,6 +2,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <map>
 #include "../../../Common/Vector2.h"
 #include "../../../AppSystem/Application/Application.h"
 
@@ -17,20 +18,24 @@ struct MapData {
 // ワープ情報を表す構造体
 struct WarpData {
 	int x, y;               // 発動するマップのマス座標 (X, Y)
-	std::string nextMap;    // 移動先のCSVファイルパス
+	int nextStageId;	    // 移動先のCSVファイルパス
 	int destX, destY;       // 移動先のマップでの出現マス座標 (X, Y)
+};
+
+// ステージ情報を表す構造体
+struct StageInfo {
+	int id;
+	std::string groundCsv;
+	std::string objectCsv;
+	std::string chipImagePath;
+	int chipSizeX;
+	int chipSizeY;
+	int chipNumX;
+	int chipNumY;
 };
 
 class StageManager
 {
-public:
-
-	static const int MAP_CHIP_SIZE_X = 32;  // マップチップの横幅
-	static const int MAP_CHIP_SIZE_Y = 32;  // マップチップの縦幅
-	static const int MAP_CHIP_NUM_X = 32;   // マップチップ画像の横分割数
-	static const int MAP_CHIP_NUM_Y = 32;   // マップチップ画像の縦分割数
-	static const int MAP_CHIP_ALL_NUM = (MAP_CHIP_NUM_X * MAP_CHIP_NUM_Y);
-
 public:
 	// シングルトン（生成・取得・削除）
 	static void CreateInstance(void) { if (instance_ == nullptr) { instance_ = new StageManager(); } };
@@ -64,6 +69,10 @@ public:
 	void Release(void);								// 解放
 
 public:
+
+	// ステージリスト（CSV）を読み込む関数
+	bool LoadStageList(const std::string& listFilename);
+
 	// 任意のCSVファイルから1層分のマップデータを読み込むヘルパー関数
 	bool LoadSingleCsv(const std::string& filename, int& outWidth, int& outHeight, std::vector<int>& outTiles);
 
@@ -73,23 +82,28 @@ public:
 	// マップのワープするとこをcsvから読み込む関数
 	bool LoadWarpData(const std::string& filename);
 
-	// マップを切り替える（ファイル名やIDを引数にする）
-	void ChangeMap(const std::string& filename);
+	// ステージIDを指定してマップを切り替える
+	void ChangeStage(int stageId);
 
 	// プレイヤーの現在位置（ピクセル）からワープを判定する関数
 	// 引数に「次のマップファイル名」「移動先の新ピクセル座標」が格納される
-	bool CheckWarp(float playerX, float playerY, std::string& outNextMap, float& outNewPx, float& outNewPy);
-
+	bool CheckWarp(float playerX, float playerY, int& outNextStageId, float& outNewPx, float& outNewPy);
 private:
 
 	// 静的インスタンス
 	static StageManager* instance_;
 
-	int mapChipHandle_[MAP_CHIP_ALL_NUM];   // マップチップ画像ハンドル
+	std::vector<int> mapChipHandle_;        // マップチップのハンドル配列
 
 	MapData currentMap;                     // 現在表示・管理しているマップデータ
 	std::vector<WarpData> warpList;         // 現在のマップに存在するワープのリスト
 
-	void ClearDispMap(void);
+	// 全ステージの情報を保持するマップ（IDをキーにする）
+	std::map<int, StageInfo> stageListMap;
+
+	int currentChipSizeX = 32;
+	int currentChipSizeY = 32;
+	int currentChipNumX = 32;
+	int currentChipNumY = 32;
 
 };

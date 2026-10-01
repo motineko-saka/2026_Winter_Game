@@ -259,14 +259,14 @@ void Player::MoveEnd(void)
 	image_.pos.x += movedPos_.x;
 	image_.pos.y += movedPos_.y;
 
-	std::string nextMapFile;
+	int nextStageId;
 	float newPx, newPy;
 
 	// 現在のプレイヤーのワールド座標（GetWorldPosX, GetWorldPosY）を使ってチェック
-	if (StageManager::GetInstance()->CheckWarp(GetWorldPosX(), GetWorldPosY(), nextMapFile, newPx, newPy))
+	if (StageManager::GetInstance()->CheckWarp(GetWorldPosX(), GetWorldPosY(), nextStageId, newPx, newPy))
 	{
-		// マップを切り替える（自動で対応する _warp.csv も読み込まれる）
-		StageManager::GetInstance()->ChangeMap(nextMapFile);
+		// ステージIDを指定してステージを切り替える
+		StageManager::GetInstance()->ChangeStage(nextStageId);
 
 		// プレイヤーの座標を移動先のピクセル座標へワープさせる
 		image_.pos.x = newPx;
