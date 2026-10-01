@@ -8,6 +8,7 @@
 #include "../../Object/Player/Player.h"
 #include "../../../AppSystem/Camera/Camera2D.h"
 #include "../../Object/Stage/Stage.h"
+#include "../../Object/Stage/StageManager.h"
 
 GameScene::GameScene(void)
 {
@@ -19,23 +20,26 @@ GameScene::~GameScene(void)
 
 void GameScene::Init(void)
 {
+	StageManager::GetInstance()->Init();
+
 	player_->Init();
-	stage_->Init();
 }
 
 void GameScene::Load(void)
 {
+	StageManager::GetInstance()->CreateInstance();
+	StageManager::GetInstance()->Load();
+
 	player_ = new Player();
-	stage_ = new Stage();
 
 	player_->Load();
-	stage_->Load();
 }
 
 void GameScene::LoadEnd(void)
 {
+	StageManager::GetInstance()->LoadEnd();
+
 	player_->LoadEnd();
-	stage_->LoadEnd();
 
 	// 初期化
 	Init();
@@ -61,24 +65,25 @@ void GameScene::Update(void)
 		SceneManager::GetInstance()->PushScene(std::make_shared<MapScene>());
 	}
 
-	player_->Update();
-	stage_->Update();
+	StageManager::GetInstance()->Update();
 
-	// 修正：プレイヤーのワールド座標を渡す（GetWorldPosX/Y）
+	player_->Update();
+
+	// プレイヤーのワールド座標を渡す
 	Camera2D::GetInstance()->ScreenMove(player_->GetWorldPosX(), player_->GetWorldPosY());
 }
 
 void GameScene::Draw(void)
 {
-	stage_->Draw();
+	StageManager::GetInstance()->Draw();
 	player_->Draw();
 }
 
 void GameScene::Release(void)
 {
-	player_->Delete();
+	player_->Release();
 	delete player_;
 
-	stage_->Release();
-	delete stage_;
+	StageManager::GetInstance()->Release();
+	StageManager::DeleteInstance();
 }

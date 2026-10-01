@@ -14,7 +14,7 @@ public:
     virtual void Load() = 0;        // “Ç‚İ‚İ
     virtual void LoadEnd() = 0;     // “Ç‚İ‚İŒã
     virtual void Draw() = 0;        // •`‰æ
-    virtual void Delete() = 0;      // íœ
+    virtual void Release() = 0;      // íœ
 
     virtual void Update();          // XV
 

@@ -10,6 +10,7 @@
 #include "../../Scene/SceneManager.h"
 #include "../../Scene/GameScene/GameScene.h"
 #include "../Stage/Stage.h"
+#include "../Stage/StageManager.h"
 
 #include "../../../Common/Debug.h"
 
@@ -81,7 +82,7 @@ void Player::Draw(void)
 	DebugDraw();
 }
 
-void Player::Delete(void)
+void Player::Release(void)
 {
 	// 画像の削除
 	for (int i = 0; i < MAX; i++)
@@ -257,6 +258,20 @@ void Player::MoveEnd(void)
 	// 移動予定の座標を確定させる
 	image_.pos.x += movedPos_.x;
 	image_.pos.y += movedPos_.y;
+
+	std::string nextMapFile;
+	float newPx, newPy;
+
+	// 現在のプレイヤーのワールド座標（GetWorldPosX, GetWorldPosY）を使ってチェック
+	if (StageManager::GetInstance()->CheckWarp(GetWorldPosX(), GetWorldPosY(), nextMapFile, newPx, newPy))
+	{
+		// マップを切り替える（自動で対応する _warp.csv も読み込まれる）
+		StageManager::GetInstance()->ChangeMap(nextMapFile);
+
+		// プレイヤーの座標を移動先のピクセル座標へワープさせる
+		image_.pos.x = newPx;
+		image_.pos.y = newPy;
+	}
 }
 
 #ifdef _DEBUG

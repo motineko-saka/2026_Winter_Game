@@ -17,7 +17,7 @@ public:
 	void Load(void) override;
 	void LoadEnd(void) override;
 	void Draw(void) override;
-	void Delete(void) override;
+	void Release(void) override;
 
 public:
 
