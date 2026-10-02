@@ -7,7 +7,6 @@
 #include "../../../AppSystem/InputManager/InputManager.h"
 #include "../../Object/Player/Player.h"
 #include "../../../AppSystem/Camera/Camera2D.h"
-#include "../../Object/Stage/Stage.h"
 #include "../../Object/Stage/StageManager.h"
 
 GameScene::GameScene(void)

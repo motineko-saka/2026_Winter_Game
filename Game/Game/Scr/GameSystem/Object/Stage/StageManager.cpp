@@ -23,8 +23,11 @@ void StageManager::Init()
 {
 	Load();
 
-	// 初期マップを読み込む
+	// マップデータを読み込む
 	LoadStageList("Data/Map/Mapcsv/StageList.csv");
+
+	// ワープデータを読み込む
+	LoadWarpData("Data/Map/Mapcsv/WarpList.csv");
 
 	ChangeStage(0);
 }
@@ -181,7 +184,7 @@ bool StageManager::LoadMapData(const std::string& filename, MapData& outMap)
 	std::string objFilename = filename;
 	size_t dotPos = objFilename.find_last_of('.');
 	if (dotPos != std::string::npos) {
-		objFilename.insert(dotPos, "_オブジェクト");
+		objFilename.insert(dotPos, "_object");
 	}
 
 	// オブジェクト用CSVの読み込み（ファイルがなくてもクラッシュしないようチェック）
@@ -202,13 +205,14 @@ bool StageManager::LoadWarpData(const std::string& filename)
 		if (line.empty() || line[0] == '#') continue;
 
 		std::vector<std::string> strSplit = Utility::Split(line, ',');
-		if (strSplit.size() >= 5) {
+		if (strSplit.size() >= 6) { 
 			WarpData warp;
-			warp.x = std::stoi(strSplit[0]);
-			warp.y = std::stoi(strSplit[1]);
-			warp.nextStageId = std::stoi(strSplit[2]); // ステージIDとして数値で格納
-			warp.destX = std::stoi(strSplit[3]);
-			warp.destY = std::stoi(strSplit[4]);
+			warp.stageId = std::stoi(strSplit[0]);     // ステージID
+			warp.x = std::stoi(strSplit[1]);           // ワープ元X
+			warp.y = std::stoi(strSplit[2]);           // ワープ元Y
+			warp.nextStageId = std::stoi(strSplit[3]); // 移動先ステージID
+			warp.destX = std::stoi(strSplit[4]);       // 移動先X
+			warp.destY = std::stoi(strSplit[5]);       // 移動先Y
 			warpList.push_back(warp);
 		}
 	}
@@ -222,9 +226,12 @@ void StageManager::ChangeStage(int stageId)
 		return;
 	}
 
+	currentStageId = stageId;
+
+	// ステージ情報を取得
 	StageInfo info = stageListMap[stageId];
 
-	// ステージごとのチップ情報を更新
+	// ここで先にチップサイズなどの変数を更新しておく
 	currentChipSizeX = info.chipSizeX;
 	currentChipSizeY = info.chipSizeY;
 	currentChipNumX = info.chipNumX;
@@ -255,24 +262,16 @@ void StageManager::ChangeStage(int stageId)
 	LoadSingleCsv(info.objectCsv, objW, objH, newMap.objectTiles);
 
 	currentMap = newMap;
-
-	// ワープデータの読み込み
-	std::string warpFilename = info.groundCsv;
-	size_t dotPos = warpFilename.find_last_of('.');
-	if (dotPos != std::string::npos) {
-		warpFilename.insert(dotPos, "_warp");
-	}
-	LoadWarpData(warpFilename);
 }
 
 bool StageManager::CheckWarp(float playerX, float playerY, int& outNextStageId, float& outNewPx, float& outNewPy)
 {
-	// 現在のチップサイズを使って判定
 	int tileX = static_cast<int>(playerX) / currentChipSizeX;
 	int tileY = static_cast<int>(playerY) / currentChipSizeY;
 
 	for (const auto& warp : warpList) {
-		if (warp.x == tileX && warp.y == tileY) {
+		// 「現在のステージID」かつ「指定の座標」に一致するものを探す
+		if (warp.stageId == currentStageId && warp.x == tileX && warp.y == tileY) {
 			outNextStageId = warp.nextStageId;
 			outNewPx = static_cast<float>(warp.destX * currentChipSizeX);
 			outNewPy = static_cast<float>(warp.destY * currentChipSizeY);

@@ -1,2 +1,3 @@
+#マップID,地面csv,オブジェクトcsv,マップチップ画像,一つのチップのサイズのX,一つのチップのサイズのY,マップチップ画像のXの数,マップチップ画像のYの数
 0,Data/Map/Mapcsv/gg.csv,Data/Map/Mapcsv/gg_オブジェクト.csv,Data/Image/Map/Mapchip.png,32,32,32,32
-1,Data/Map/Mapcsv/map.csv,Data/Map/Mapcsv/map_オブジェクト.csv,Data/Image/Map/Yamaguchi.png,32,32,8,111
+1,Data/Map/Mapcsv/map.csv,Data/Map/Mapcsv/map_object.csv,Data/Image/Map/Yamaguchi.png,32,32,8,111

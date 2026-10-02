@@ -17,6 +17,7 @@ struct MapData {
 
 // ワープ情報を表す構造体
 struct WarpData {
+	int stageId;
 	int x, y;               // 発動するマップのマス座標 (X, Y)
 	int nextStageId;	    // 移動先のCSVファイルパス
 	int destX, destY;       // 移動先のマップでの出現マス座標 (X, Y)
@@ -106,4 +107,5 @@ private:
 	int currentChipNumX = 32;
 	int currentChipNumY = 32;
 
+	int currentStageId = 0; // 現在のステージID
 };
