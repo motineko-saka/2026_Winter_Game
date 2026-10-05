@@ -539,7 +539,7 @@ Quaternion Quaternion::RotateTowards(const Quaternion& from, const Quaternion& t
     {
         return to;
     }
-    float t = min(1.0f, maxDegreesDelta / (float)num);
+    float t = std::min(1.0f, maxDegreesDelta / static_cast<float>(num));
     return Quaternion::SlerpUnclamped(from, to, t);
 }
 

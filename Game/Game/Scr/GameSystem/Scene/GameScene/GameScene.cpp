@@ -24,6 +24,16 @@ void GameScene::Init(void)
 	StageManager::GetInstance()->Init();
 
 	player_->Init();
+
+	monsterData_.Init();
+	monsterParty_.Init();
+
+	// 図鑑番号1番のモンスターをLv5で手持ちに入れる
+	MonsterInstance starter;
+	if (MonsterParty::Create(monsterData_, 1, 5, starter))
+	{
+		monsterParty_.Add(starter);
+	}
 }
 
 void GameScene::Load(void)
@@ -34,6 +44,8 @@ void GameScene::Load(void)
 	player_ = new Player();
 
 	player_->Load();
+
+	monsterData_.Load();
 }
 
 void GameScene::LoadEnd(void)
@@ -55,10 +67,10 @@ void GameScene::Update(void)
 	}
 
 	// バトル画面に遷移
-	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
-	{
-		SceneManager::GetInstance()->PushScene(std::make_shared<BattleScene>());
-	}
+	//if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
+	//{
+	//	SceneManager::GetInstance()->PushScene(std::make_shared<BattleScene>());
+	//}
 
 	// マップ画面に遷移
 	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_M))
@@ -72,6 +84,13 @@ void GameScene::Update(void)
 
 	// プレイヤーのワールド座標を渡す
 	Camera2D::GetInstance()->ScreenMove(player_->GetWorldPosX(), player_->GetWorldPosY());
+
+	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_B))
+	{
+		auto battle = std::make_shared<BattleScene>();
+		battle->Setup(&monsterData_, &monsterParty_, 2, 3);  // 野生：図鑑番号2、Lv3
+		SceneManager::GetInstance()->PushScene(battle);
+	}
 }
 
 void GameScene::Draw(void)
@@ -103,4 +122,6 @@ void GameScene::Release(void)
 
 	StageManager::GetInstance()->Release();
 	StageManager::DeleteInstance();
+
+	monsterData_.Release();
 }

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../SceneBase.h"
+#include "../../Object/Monster/MonsterData.h"
+#include "../../Object/Monster/MonsterParty.h"
 
 class Player;
 
@@ -25,4 +27,7 @@ private:
 	int mainScreenId_;
 
 	Player* player_;
+
+	MonsterData monsterData_;
+	MonsterParty monsterParty_;
 };

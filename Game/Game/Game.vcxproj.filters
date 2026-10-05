@@ -84,13 +84,13 @@
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterData.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterDatabase.cpp">
+    <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterParty.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterInstance.cpp">
+    <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterGrowth.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterResource.cpp">
+    <ClCompile Include="Scr\GameSystem\Object\Monster\Monsterbox.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>
@@ -173,13 +173,13 @@
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterData.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterDatabase.h">
+    <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterParty.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterInstance.h">
+    <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterGrowth.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterResource.h">
+    <ClInclude Include="Scr\GameSystem\Object\Monster\Monsterbox.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>
