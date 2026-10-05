@@ -5,6 +5,7 @@
 #include <functional>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include "../SceneBase.h"
 #include "../../Object/Monster/MonsterData.h"	
 
@@ -79,6 +80,7 @@ private:
 		int defRank = 0;		// -6〜+6
 		int sleepTurns = 0;		// 睡眠の残りターン（戦闘中のみ）
 		float dispHp = 0.0f;	// HPバーの表示用（なめらかに減らす）
+		int image = -1;			// 表示する画像ハンドル（敵＝正面、味方＝背面）
 	};
 
 	// 1ステップ＝1メッセージ分の処理
@@ -125,15 +127,25 @@ private:
 	void DrawMoveMenu(void) const;
 	void DrawPartyMenu(void) const;
 	void DrawLearnMenu(void) const;
+	void DrawMonsterImage(int side, int cx, int bottomY, int size) const;
 
 	// ---------- 補助 ----------
+	int LoadMonsterImage(const std::string& path);	// パスから画像を読み込む（同じパスはキャッシュを返す）
 	std::string Name(int side) const;
 	int Rand(int lo, int hi);				// lo〜hi（両端を含む）
+	int SX(int x) const { return x * screenW_ / BASE_W; }	// 640x480基準のX座標を実画面に合わせる
+	int SY(int y) const { return y * screenH_ / BASE_H; }	// 640x480基準のY座標を実画面に合わせる
 
 private:
 
 	static const int PLAYER = 0;
 	static const int ENEMY = 1;
+
+	// レイアウトの設計基準サイズ（この値を基準に実画面へ拡縮する）
+	static const int BASE_W = 640;
+	static const int BASE_H = 480;
+	int screenW_ = BASE_W;			// 実際の画面サイズ（Drawの頭で更新）
+	int screenH_ = BASE_H;
 
 	// 外部から渡されるもの
 	const MonsterData* data_ = nullptr;
@@ -159,6 +171,8 @@ private:
 	std::deque<int> learnQueue_;	// 覚えたいが枠が埋まっている技
 
 	int cursor_ = 0;
+
+	std::unordered_map<std::string, int> images_;	// パス→画像ハンドルのキャッシュ
 
 	std::mt19937 rng_;
 };

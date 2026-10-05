@@ -1,6 +1,6 @@
 #図鑑番号,名前,タイプ1,タイプ2,HP,攻撃,防御,素早さ,成長率,基礎経験値,捕獲率,アイコン画像パス,正面画像パス,背面画像パス,鳴き声パス,説明
-1,野本アレン,WIND,,100,120,80,100,FAST,100,45,Data/Image/Monster/Icon/001.png,Data/Image/Monster/Front/001.png,Data/Image/Monster/Back/001.png,Data/Sound/Cry/001.wav,サンプルの説明文
-2,勝吉虹斗,WIND,,100,80,120,100,MEDIUM,100000,45,Data/Image/Monster/Icon/002.png,Data/Image/Monster/Front/002.png,Data/Image/Monster/Back/002.png,Data/Sound/Cry/002.wav,サンプルの説明文
+1,新井貴浩,WIND,,100,120,80,100,FAST,100,45,Data/Image/Monster/1/Monster1Icon.png,Data/Image/Monster/1/Monster1.png,Data/Image/Monster/1/arai.png,Data/Sound/Cry/001.wav,サンプルの説明文
+2,小園海斗,WIND,,100,80,120,100,MEDIUM,1000,45,Data/Image/Monster/Icon/002.png,Data/Image/Monster/1/kozono.png,Data/Image/Monster/Back/002.png,Data/Sound/Cry/002.wav,サンプルの説明文
 3,,WIND,,,,,,,,,,,,,
 4,,WATER,,,,,,,,,,,,,
 5,,WATER,,,,,,,,,,,,,

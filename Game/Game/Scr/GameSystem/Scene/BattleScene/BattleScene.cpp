@@ -154,12 +154,19 @@ void BattleScene::Update(void)
 
 void BattleScene::Draw(void)
 {
-	// 背景
-	DrawBox(0, 0, 640, 480, GetColor(190, 230, 190), TRUE);
+	// 現在の描画先サイズを取得（画面サイズ変更にも追従）
+	GetDrawScreenSize(&screenW_, &screenH_);
+
+	// 背景（画面全体）
+	DrawBox(0, 0, screenW_, screenH_, GetColor(190, 230, 190), TRUE);
+
+	// モンスター画像（敵＝右上、味方＝左下）
+	DrawMonsterImage(ENEMY, SX(480), SY(210), SY(180));
+	DrawMonsterImage(PLAYER, SX(170), SY(350), SY(200));
 
 	// 敵（左上）とプレイヤー（右下）の情報
-	DrawStatusBox(ENEMY, 30, 30);
-	DrawStatusBox(PLAYER, 370, 250);
+	DrawStatusBox(ENEMY, SX(30), SY(30));
+	DrawStatusBox(PLAYER, SX(370), SY(250));
 
 	switch (phase_)
 	{
@@ -186,6 +193,14 @@ void BattleScene::Draw(void)
 
 void BattleScene::Release(void)
 {
+	for (auto& pair : images_)
+	{
+		if (pair.second != -1)
+		{
+			DeleteGraph(pair.second);
+		}
+	}
+	images_.clear();
 	steps_.clear();
 	learnQueue_.clear();
 	side_ = {};
@@ -735,6 +750,30 @@ void BattleScene::SetCombatant(int side, MonsterInstance* mon)
 	c.mon = mon;
 	c.master = data_->GetMonster(mon->monsterId);
 	c.dispHp = static_cast<float>(mon->currentHp);
+
+	// 敵は正面、味方は背面の画像を使う
+	if (c.master != nullptr)
+	{
+		c.image = LoadMonsterImage(side == ENEMY ? c.master->frontPath : c.master->backPath);
+	}
+}
+
+int BattleScene::LoadMonsterImage(const std::string& path)
+{
+	if (path.empty())
+	{
+		return -1;
+	}
+
+	auto it = images_.find(path);
+	if (it != images_.end())
+	{
+		return it->second;
+	}
+
+	int handle = LoadGraph(path.c_str());	// 失敗すると-1（その場合は描画をスキップする）
+	images_[path] = handle;
+	return handle;
 }
 
 // =============================================================
@@ -944,6 +983,27 @@ void BattleScene::DrawHpBar(int x, int y, int w, int h, float ratio) const
 	DrawBox(x, y, x + static_cast<int>(w * ratio), y + h, color, TRUE);
 }
 
+// 画像の下端中央を(cx, bottomY)に合わせ、縦横の長い方がsizeに収まるよう縮尺して描く
+void BattleScene::DrawMonsterImage(int side, int cx, int bottomY, int size) const
+{
+	int img = side_[side].image;
+	if (img == -1)
+	{
+		return;	// 画像なし（パス未記入・読み込み失敗）
+	}
+
+	int w = 0, h = 0;
+	GetGraphSize(img, &w, &h);
+	if (w <= 0 || h <= 0)
+	{
+		return;
+	}
+
+	double scale = static_cast<double>(size) / std::max(w, h);
+	int cy = bottomY - static_cast<int>(h * scale / 2);
+	DrawRotaGraph(cx, cy, scale, 0.0, img, TRUE);
+}
+
 void BattleScene::DrawStatusBox(int side, int x, int y) const
 {
 	const Combatant& c = side_[side];
@@ -954,39 +1014,41 @@ void BattleScene::DrawStatusBox(int side, int x, int y) const
 
 	const unsigned int black = GetColor(0, 0, 0);
 	const int maxHp = MonsterParty::CalcMaxHp(*c.master, c.mon->level);
-	const int boxH = (side == PLAYER) ? 84 : 56;
+	const int boxW = SX(240);
+	const int boxH = SY((side == PLAYER) ? 84 : 56);
+	const int barW = SX(220);
 
-	DrawBox(x, y, x + 240, y + boxH, GetColor(255, 255, 255), TRUE);
-	DrawBox(x, y, x + 240, y + boxH, GetColor(60, 60, 60), FALSE);
+	DrawBox(x, y, x + boxW, y + boxH, GetColor(255, 255, 255), TRUE);
+	DrawBox(x, y, x + boxW, y + boxH, GetColor(60, 60, 60), FALSE);
 
-	DrawFormatString(x + 10, y + 6, black, "%s  Lv%d", c.mon->nickname.c_str(), c.mon->level);
+	DrawFormatString(x + SX(10), y + SY(6), black, "%s  Lv%d", c.mon->nickname.c_str(), c.mon->level);
 	const char* ailment = AilmentText(c.mon->ailment);
 	if (ailment[0] != '\0')
 	{
-		DrawFormatString(x + 180, y + 6, GetColor(160, 0, 120), "%s", ailment);
+		DrawFormatString(x + SX(180), y + SY(6), GetColor(160, 0, 120), "%s", ailment);
 	}
 
-	DrawHpBar(x + 10, y + 28, 220, 10, c.dispHp / static_cast<float>(std::max(1, maxHp)));
+	DrawHpBar(x + SX(10), y + SY(28), barW, SY(10), c.dispHp / static_cast<float>(std::max(1, maxHp)));
 
 	if (side == PLAYER)
 	{
-		DrawFormatString(x + 10, y + 44, black, "HP %d / %d", std::max(0, c.mon->currentHp), maxHp);
+		DrawFormatString(x + SX(10), y + SY(44), black, "HP %d / %d", std::max(0, c.mon->currentHp), maxHp);
 		// 経験値バー
 		const float expRatio = MonsterGrowth::GetExpRatio(*data_, *c.mon);
-		DrawBox(x + 10, y + 70, x + 230, y + 76, GetColor(90, 90, 90), TRUE);
-		DrawBox(x + 10, y + 70, x + 10 + static_cast<int>(220 * expRatio), y + 76, GetColor(70, 130, 230), TRUE);
+		DrawBox(x + SX(10), y + SY(70), x + SX(10) + barW, y + SY(76), GetColor(90, 90, 90), TRUE);
+		DrawBox(x + SX(10), y + SY(70), x + SX(10) + static_cast<int>(barW * expRatio), y + SY(76), GetColor(70, 130, 230), TRUE);
 	}
 }
 
 void BattleScene::DrawMessageBox(const std::string& text) const
 {
-	DrawBox(0, 360, 640, 480, GetColor(255, 255, 255), TRUE);
-	DrawBox(4, 364, 636, 476, GetColor(60, 60, 60), FALSE);
-	DrawFormatString(24, 384, GetColor(0, 0, 0), "%s", text.c_str());
+	DrawBox(0, SY(360), screenW_, screenH_, GetColor(255, 255, 255), TRUE);
+	DrawBox(SX(4), SY(364), screenW_ - SX(4), screenH_ - SY(4), GetColor(60, 60, 60), FALSE);
+	DrawFormatString(SX(24), SY(384), GetColor(0, 0, 0), "%s", text.c_str());
 
 	if (phase_ == Phase::MESSAGE || phase_ == Phase::END)
 	{
-		DrawString(600, 450, "▼", GetColor(0, 0, 0));
+		DrawString(SX(600), SY(450), "▼", GetColor(0, 0, 0));
 	}
 }
 
@@ -994,13 +1056,13 @@ void BattleScene::DrawCommandMenu(void) const
 {
 	static const char* const items[3] = { "たたかう", "いれかえ", "にげる" };
 
-	DrawBox(400, 360, 640, 480, GetColor(255, 255, 255), TRUE);
-	DrawBox(404, 364, 636, 476, GetColor(60, 60, 60), FALSE);
+	DrawBox(SX(400), SY(360), screenW_, screenH_, GetColor(255, 255, 255), TRUE);
+	DrawBox(SX(404), SY(364), screenW_ - SX(4), screenH_ - SY(4), GetColor(60, 60, 60), FALSE);
 	for (int i = 0; i < 3; i++)
 	{
-		DrawFormatString(450, 378 + i * 30, GetColor(0, 0, 0), "%s", items[i]);
+		DrawFormatString(SX(450), SY(378 + i * 30), GetColor(0, 0, 0), "%s", items[i]);
 	}
-	DrawString(425, 378 + cursor_ * 30, "▶", GetColor(0, 0, 0));
+	DrawString(SX(425), SY(378 + cursor_ * 30), "▶", GetColor(0, 0, 0));
 }
 
 void BattleScene::DrawMoveMenu(void) const
@@ -1008,14 +1070,14 @@ void BattleScene::DrawMoveMenu(void) const
 	const unsigned int black = GetColor(0, 0, 0);
 	const MonsterInstance* p = side_[PLAYER].mon;
 
-	DrawBox(0, 360, 640, 480, GetColor(255, 255, 255), TRUE);
-	DrawBox(4, 364, 636, 476, GetColor(60, 60, 60), FALSE);
+	DrawBox(0, SY(360), screenW_, screenH_, GetColor(255, 255, 255), TRUE);
+	DrawBox(SX(4), SY(364), screenW_ - SX(4), screenH_ - SY(4), GetColor(60, 60, 60), FALSE);
 
 	for (int i = 0; i < 4; i++)
 	{
 		const MoveSlot& slot = p->moves[i];
-		const int x = 50 + (i % 2) * 220;
-		const int y = 380 + (i / 2) * 36;
+		const int x = SX(50 + (i % 2) * 220);
+		const int y = SY(380 + (i / 2) * 36);
 		const MoveData* move = (slot.moveId != MonsterParty::MOVE_NONE) ? data_->GetMove(slot.moveId) : nullptr;
 
 		if (move == nullptr)
@@ -1028,16 +1090,16 @@ void BattleScene::DrawMoveMenu(void) const
 	}
 
 	// カーソル（2列×2行の配置）
-	DrawString(25 + (cursor_ % 2) * 220, 380 + (cursor_ / 2) * 36, "▶", black);
+	DrawString(SX(25 + (cursor_ % 2) * 220), SY(380 + (cursor_ / 2) * 36), "▶", black);
 
 	// 選択中の技の詳細
 	const MoveSlot& sel = p->moves[cursor_];
 	const MoveData* selMove = (sel.moveId != MonsterParty::MOVE_NONE) ? data_->GetMove(sel.moveId) : nullptr;
 	if (selMove != nullptr)
 	{
-		DrawFormatString(480, 380, black, "PP %d / %d", sel.currentPp, selMove->pp);
-		DrawFormatString(480, 410, black, "威力 %d", selMove->power);
-		DrawFormatString(480, 436, black, "命中 %d", selMove->accuracy);
+		DrawFormatString(SX(480), SY(380), black, "PP %d / %d", sel.currentPp, selMove->pp);
+		DrawFormatString(SX(480), SY(410), black, "威力 %d", selMove->power);
+		DrawFormatString(SX(480), SY(436), black, "命中 %d", selMove->accuracy);
 	}
 }
 
@@ -1045,13 +1107,13 @@ void BattleScene::DrawPartyMenu(void) const
 {
 	const unsigned int black = GetColor(0, 0, 0);
 
-	DrawBox(60, 30, 580, 340, GetColor(245, 245, 255), TRUE);
-	DrawBox(60, 30, 580, 340, GetColor(60, 60, 60), FALSE);
+	DrawBox(SX(60), SY(30), SX(580), SY(340), GetColor(245, 245, 255), TRUE);
+	DrawBox(SX(60), SY(30), SX(580), SY(340), GetColor(60, 60, 60), FALSE);
 
 	for (int i = 0; i < party_->GetCount(); i++)
 	{
 		const MonsterInstance* m = party_->Get(i);
-		const int y = 48 + i * 48;
+		const int y = SY(48 + i * 48);
 		const int maxHp = MonsterParty::GetMaxHp(*data_, *m);
 
 		unsigned int color = black;
@@ -1063,15 +1125,15 @@ void BattleScene::DrawPartyMenu(void) const
 		{
 			color = GetColor(110, 110, 110);
 		}
-		DrawFormatString(110, y, color, "%s  Lv%d", m->nickname.c_str(), m->level);
-		DrawFormatString(400, y, color, "HP %d / %d", std::max(0, m->currentHp), maxHp);
-		DrawHpBar(110, y + 22, 200, 8, static_cast<float>(m->currentHp) / static_cast<float>(std::max(1, maxHp)));
+		DrawFormatString(SX(110), y, color, "%s  Lv%d", m->nickname.c_str(), m->level);
+		DrawFormatString(SX(400), y, color, "HP %d / %d", std::max(0, m->currentHp), maxHp);
+		DrawHpBar(SX(110), y + SY(22), SX(200), SY(8), static_cast<float>(m->currentHp) / static_cast<float>(std::max(1, maxHp)));
 		if (i == activeIndex_)
 		{
-			DrawString(330, y, "(戦闘中)", color);
+			DrawString(SX(330), y, "(戦闘中)", color);
 		}
 	}
-	DrawString(80, 48 + cursor_ * 48, "▶", black);
+	DrawString(SX(80), SY(48 + cursor_ * 48), "▶", black);
 }
 
 void BattleScene::DrawLearnMenu(void) const
@@ -1083,15 +1145,15 @@ void BattleScene::DrawLearnMenu(void) const
 	DrawMessageBox(p->nickname + "は " + (newMove != nullptr ? newMove->name : "？")
 		+ "を おぼえたい！ わすれる技を えらんでください。");
 
-	DrawBox(380, 190, 620, 350, GetColor(255, 255, 255), TRUE);
-	DrawBox(380, 190, 620, 350, GetColor(60, 60, 60), FALSE);
+	DrawBox(SX(380), SY(190), SX(620), SY(350), GetColor(255, 255, 255), TRUE);
+	DrawBox(SX(380), SY(190), SX(620), SY(350), GetColor(60, 60, 60), FALSE);
 	for (int i = 0; i < 4; i++)
 	{
 		const MoveData* m = data_->GetMove(p->moves[i].moveId);
-		DrawFormatString(430, 202 + i * 26, black, "%s", m != nullptr ? m->name.c_str() : "－");
+		DrawFormatString(SX(430), SY(202 + i * 26), black, "%s", m != nullptr ? m->name.c_str() : "－");
 	}
-	DrawString(430, 202 + 4 * 26, "あきらめる", black);
-	DrawString(405, 202 + cursor_ * 26, "▶", black);
+	DrawString(SX(430), SY(202 + 4 * 26), "あきらめる", black);
+	DrawString(SX(405), SY(202 + cursor_ * 26), ">", black);
 }
 
 // =============================================================
