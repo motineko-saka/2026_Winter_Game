@@ -6,6 +6,7 @@
 #include <random>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include "../SceneBase.h"
 #include "../../Object/Monster/MonsterData.h"	
 
@@ -61,6 +62,8 @@ private:
 		MOVE_SELECT,	// 技選択
 		PARTY_SELECT,	// 交代先選択
 		LEARN_SELECT,	// 技を忘れて新しい技を覚えるか選ぶ
+		EVOLVING,		// 進化演出中（BACKでキャンセルできる）
+		EVOLVE_SELECT,	// 進化先を選ぶ（分岐進化）
 		END,			// 終了（Enterでシーンを閉じる）
 	};
 
@@ -81,6 +84,24 @@ private:
 		int sleepTurns = 0;		// 睡眠の残りターン（戦闘中のみ）
 		float dispHp = 0.0f;	// HPバーの表示用（なめらかに減らす）
 		int image = -1;			// 表示する画像ハンドル（敵＝正面、味方＝背面）
+	};
+
+	// 進化の進行状況
+	enum class EvolveState
+	{
+		NONE,		// 進化していない
+		INTRO,		// 「おや…？」のメッセージ中
+		SELECT,		// 進化先を選択中（分岐進化のとき）
+		ANIM,		// 進化演出中（BACKでキャンセルできる）
+		RESULT,		// 進化した／止まったのメッセージ中
+	};
+
+	// 進化待ちの個体
+	struct EvolveEntry
+	{
+		MonsterInstance* mon = nullptr;
+		int toId = 0;			// 進化先の図鑑番号（選ばれたもの）
+		std::vector<int> candidates;	// 進化できる先の候補（2つ以上なら選ばせる）
 	};
 
 	// 1ステップ＝1メッセージ分の処理
@@ -107,6 +128,12 @@ private:
 	void EndOfTurnDamage(int side);
 	void OnFaint(int side);
 	void GainPlayerExp(int amount);
+	void CheckEvolution(MonsterInstance& mon, int level);	// レベルアップ後に進化できるか調べて、できれば待ち行列へ
+	bool StartEvolve(void);					// 待ち行列の先頭の進化を始める（始められなければfalse）
+	void ApplyEvolution(MonsterInstance& mon, int toId);	// 種族・HP・名前などを進化後に書き換える
+	void BeginEvolveAnim(void);				// 進化演出を始める
+	void CancelEvolve(void);				// 進化をキャンセルする
+	void LearnEvolutionMoves(MonsterInstance& mon);	// 進化後の種族がそのレベルで覚える技を習得させる
 	void SwitchPlayer(int partyIndex);
 	void SetCombatant(int side, MonsterInstance* mon);
 
@@ -115,6 +142,8 @@ private:
 	void UpdateMoveSelect(void);
 	void UpdatePartySelect(void);
 	void UpdateLearnSelect(void);
+	void UpdateEvolve(void);
+	void UpdateEvolveSelect(void);
 	void MoveCursor(int count);
 	bool HasUsableMove(void) const;
 	void UpdateHpBars(void);
@@ -127,7 +156,9 @@ private:
 	void DrawMoveMenu(void) const;
 	void DrawPartyMenu(void) const;
 	void DrawLearnMenu(void) const;
+	void DrawEvolve(void) const;
 	void DrawMonsterImage(int side, int cx, int bottomY, int size) const;
+	void DrawImageFit(int img, int cx, int bottomY, int size) const;	// 画像ハンドルを指定して描く
 
 	// ---------- 補助 ----------
 	int LoadMonsterImage(const std::string& path);	// パスから画像を読み込む（同じパスはキャッシュを返す）
@@ -140,6 +171,8 @@ private:
 
 	static const int PLAYER = 0;
 	static const int ENEMY = 1;
+
+	static const int EVOLVE_FRAMES = 240;	// 進化演出の長さ（60fpsで約4秒）
 
 	// レイアウトの設計基準サイズ（この値を基準に実画面へ拡縮する）
 	static const int BASE_W = 640;
@@ -169,6 +202,18 @@ private:
 	size_t insertIdx_ = 0;
 	bool needSwitch_ = false;		// ひんしになったので交代先を選ばせる
 	std::deque<int> learnQueue_;	// 覚えたいが枠が埋まっている技
+
+	// 進化
+	std::deque<EvolveEntry> evolveQueue_;			// 進化待ち（戦闘後に順番に処理する）
+	EvolveState evolveState_ = EvolveState::NONE;
+	EvolveEntry evolveCur_{};						// 今進化させようとしている個体
+	int evolveTimer_ = 0;							// 演出の経過フレーム
+	int evolveFlip_ = 0;							// 次に画像を切り替えるまでのフレーム
+	bool evolveShowNew_ = false;					// 演出中、進化後の画像を出しているか
+	bool evolved_ = false;							// 進化が確定したか（結果表示用）
+	int evolveOldImg_ = -1;							// 進化前の背面画像
+	int evolveNewImg_ = -1;							// 進化後の背面画像
+	std::vector<int> evolveCandImgs_;				// 進化先候補の背面画像（選択画面のプレビュー用）
 
 	int cursor_ = 0;
 

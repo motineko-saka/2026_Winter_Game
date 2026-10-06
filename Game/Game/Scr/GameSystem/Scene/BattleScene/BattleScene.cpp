@@ -54,6 +54,8 @@ void BattleScene::Init(void)
 {
 	steps_.clear();
 	learnQueue_.clear();
+	evolveQueue_.clear();
+	evolveState_ = EvolveState::NONE;
 	needSwitch_ = false;
 	runAttempts_ = 0;
 	result_ = Result::NONE;
@@ -142,6 +144,12 @@ void BattleScene::Update(void)
 	case Phase::LEARN_SELECT:
 		UpdateLearnSelect();
 		break;
+	case Phase::EVOLVING:
+		UpdateEvolve();
+		break;
+	case Phase::EVOLVE_SELECT:
+		UpdateEvolveSelect();
+		break;
 	case Phase::END:
 		// ゲーム画面に戻る
 		if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
@@ -159,6 +167,13 @@ void BattleScene::Draw(void)
 
 	// 背景（画面全体）
 	DrawBox(0, 0, screenW_, screenH_, GetColor(190, 230, 190), TRUE);
+
+	// 進化中は専用の画面
+	if (evolveState_ != EvolveState::NONE)
+	{
+		DrawEvolve();
+		return;
+	}
 
 	// モンスター画像（敵＝右上、味方＝左下）
 	DrawMonsterImage(ENEMY, SX(480), SY(210), SY(180));
@@ -188,6 +203,9 @@ void BattleScene::Draw(void)
 	case Phase::LEARN_SELECT:
 		DrawLearnMenu();
 		break;
+	case Phase::EVOLVING:
+	case Phase::EVOLVE_SELECT:
+		break;	// DrawEvolveで描画済み
 	}
 }
 
@@ -203,6 +221,8 @@ void BattleScene::Release(void)
 	images_.clear();
 	steps_.clear();
 	learnQueue_.clear();
+	evolveQueue_.clear();
+	evolveState_ = EvolveState::NONE;
 	side_ = {};
 }
 
@@ -260,6 +280,24 @@ void BattleScene::Finish(void)
 {
 	cursor_ = 0;
 
+	// 進化の進行：「おや…？」のあとは演出へ、結果メッセージのあとは通常の流れへ戻る
+	if (evolveState_ == EvolveState::INTRO)
+	{
+		if (evolveCur_.candidates.size() > 1)
+		{
+			// 分岐進化：進化先を選ばせる
+			evolveState_ = EvolveState::SELECT;
+			phase_ = Phase::EVOLVE_SELECT;
+			return;
+		}
+		BeginEvolveAnim();
+		return;
+	}
+	if (evolveState_ == EvolveState::RESULT)
+	{
+		evolveState_ = EvolveState::NONE;
+	}
+
 	// ひんしになったので、次に出すモンスターを選ばせる
 	if (needSwitch_ && result_ == Result::NONE)
 	{
@@ -280,6 +318,15 @@ void BattleScene::Finish(void)
 	{
 		phase_ = Phase::LEARN_SELECT;
 		return;
+	}
+
+	// 技の習得が全部終わったあとに進化（ポケモンと同じ順番）
+	while (!evolveQueue_.empty())
+	{
+		if (StartEvolve())
+		{
+			return;
+		}
 	}
 
 	if (result_ != Result::NONE)
@@ -721,6 +768,7 @@ void BattleScene::GainPlayerExp(int amount)
 	if (r.newLevel > r.oldLevel)
 	{
 		PushSay(p->nickname + "は レベル" + std::to_string(r.newLevel) + "に あがった！");
+		CheckEvolution(*p, r.newLevel);	// 実際の進化は戦闘後（技の習得のあと）
 	}
 	for (int moveId : r.learnedMoves)
 	{
@@ -733,6 +781,195 @@ void BattleScene::GainPlayerExp(int amount)
 	for (int moveId : r.pendingMoves)
 	{
 		learnQueue_.push_back(moveId);	// 戦闘後の技選択で聞く
+	}
+}
+
+// レベルアップで進化できるか調べる（アイテム進化は戦闘では扱わない）
+// 条件を満たす進化先が複数あれば、すべて候補として持ち、あとで選ばせる。
+void BattleScene::CheckEvolution(MonsterInstance& mon, int level)
+{
+	const MonsterMasterData* master = data_->GetMonster(mon.monsterId);
+	if (master == nullptr)
+	{
+		return;
+	}
+
+	EvolveEntry entry;
+	for (const Evolution& e : master->evolutions)
+	{
+		if (e.itemId != 0 || e.level <= 0 || e.level > level)
+		{
+			continue;
+		}
+		if (data_->GetMonster(e.toId) == nullptr)
+		{
+			continue;
+		}
+		if (std::find(entry.candidates.begin(), entry.candidates.end(), e.toId) != entry.candidates.end())
+		{
+			continue;	// 同じ進化先の重複は無視
+		}
+		entry.candidates.push_back(e.toId);
+	}
+
+	if (entry.candidates.empty())
+	{
+		return;
+	}
+	entry.mon = &mon;
+	entry.toId = entry.candidates.front();
+	evolveQueue_.push_back(entry);
+}
+
+bool BattleScene::StartEvolve(void)
+{
+	evolveCur_ = evolveQueue_.front();
+	evolveQueue_.pop_front();
+
+	if (evolveCur_.mon == nullptr || evolveCur_.candidates.empty())
+	{
+		return false;
+	}
+	const MonsterMasterData* oldMaster = data_->GetMonster(evolveCur_.mon->monsterId);
+	if (oldMaster == nullptr)
+	{
+		return false;
+	}
+
+	evolveOldImg_ = LoadMonsterImage(oldMaster->backPath);
+
+	// 候補の画像を先に読んでおく（選択画面で使う）
+	evolveCandImgs_.clear();
+	for (int id : evolveCur_.candidates)
+	{
+		evolveCandImgs_.push_back(LoadMonsterImage(data_->GetMonster(id)->backPath));
+	}
+
+	// 候補が1つならそれで確定、複数なら選択後に上書きされる
+	evolveCur_.toId = evolveCur_.candidates.front();
+	evolveNewImg_ = evolveCandImgs_.front();
+
+	evolved_ = false;
+	evolveShowNew_ = false;
+	evolveState_ = EvolveState::INTRO;
+
+	phase_ = Phase::MESSAGE;
+	Say("おや…？ " + evolveCur_.mon->nickname + "の ようすが…！");
+	return true;
+}
+
+void BattleScene::BeginEvolveAnim(void)
+{
+	evolveState_ = EvolveState::ANIM;
+	evolveTimer_ = 0;
+	evolveFlip_ = 22;
+	evolveShowNew_ = false;
+	phase_ = Phase::EVOLVING;
+}
+
+// 次のレベルアップでまた進化できる
+void BattleScene::CancelEvolve(void)
+{
+	evolved_ = false;
+	evolveState_ = EvolveState::RESULT;
+	steps_.clear();
+	insertIdx_ = 0;
+	PushSay("あれ…？ " + evolveCur_.mon->nickname + "の へんかが とまった！");
+	StartMessages();
+}
+
+// 進化後の種族が「今のレベルちょうど」で覚える技を習得させる。
+// 空き枠があればそのまま覚え、埋まっていれば忘れる技の選択（learnQueue_）に回す。
+void BattleScene::LearnEvolutionMoves(MonsterInstance& mon)
+{
+	const MonsterMasterData* master = data_->GetMonster(mon.monsterId);
+	if (master == nullptr)
+	{
+		return;
+	}
+
+	for (const LearnEntry& e : master->learnset)
+	{
+		if (e.level != mon.level)
+		{
+			continue;
+		}
+		const MoveData* move = data_->GetMove(e.moveId);
+		if (move == nullptr)
+		{
+			continue;
+		}
+
+		// すでに覚えている／覚える予定の技は飛ばす
+		bool known = std::find(learnQueue_.begin(), learnQueue_.end(), e.moveId) != learnQueue_.end();
+		for (const MoveSlot& slot : mon.moves)
+		{
+			if (slot.moveId == e.moveId)
+			{
+				known = true;
+			}
+		}
+		if (known)
+		{
+			continue;
+		}
+
+		MoveSlot* freeSlot = nullptr;
+		for (MoveSlot& slot : mon.moves)
+		{
+			if (slot.moveId == MonsterParty::MOVE_NONE)
+			{
+				freeSlot = &slot;
+				break;
+			}
+		}
+
+		if (freeSlot != nullptr)
+		{
+			freeSlot->moveId = e.moveId;
+			freeSlot->currentPp = move->pp;
+			PushSay(mon.nickname + "は " + move->name + "を おぼえた！");
+		}
+		else
+		{
+			learnQueue_.push_back(e.moveId);
+		}
+	}
+}
+
+void BattleScene::ApplyEvolution(MonsterInstance& mon, int toId)
+{
+	const MonsterMasterData* oldMaster = data_->GetMonster(mon.monsterId);
+	const MonsterMasterData* newMaster = data_->GetMonster(toId);
+	if (oldMaster == nullptr || newMaster == nullptr)
+	{
+		return;
+	}
+
+	const int oldMaxHp = MonsterParty::CalcMaxHp(*oldMaster, mon.level);
+	const int newMaxHp = MonsterParty::CalcMaxHp(*newMaster, mon.level);
+
+	// ニックネームを付けていなければ、新しい種族名に変わる
+	if (mon.nickname == oldMaster->name)
+	{
+		mon.nickname = newMaster->name;
+	}
+	mon.monsterId = toId;
+
+	// 最大HPが増えた分だけ現在HPも増える（戦えるまま進化するので最低1は残す）
+	mon.currentHp = std::max(1, std::min(mon.currentHp + (newMaxHp - oldMaxHp), newMaxHp));
+
+	// 成長率が変わっても、今のレベルの最低経験値を下回らないようにする
+	mon.exp = std::max(mon.exp, MonsterGrowth::GetExpForLevel(newMaster->growthRate, mon.level));
+
+	// 戦闘中の表示も進化後に合わせる
+	for (auto& c : side_)
+	{
+		if (c.mon == &mon)
+		{
+			c.master = newMaster;
+			c.image = evolveNewImg_;
+		}
 	}
 }
 
@@ -941,6 +1178,62 @@ void BattleScene::UpdateLearnSelect(void)
 	phase_ = Phase::MESSAGE;
 }
 
+void BattleScene::UpdateEvolve(void)
+{
+	auto* input = InputManager::GetInstance();
+	MonsterInstance* mon = evolveCur_.mon;
+
+	// BACKでキャンセル
+	if (input->IsTrgDown(KEY_INPUT_BACK))
+	{
+		CancelEvolve();
+		return;
+	}
+
+	evolveTimer_++;
+
+	// 進化前と進化後の画像を交互に出す（だんだん速くなる）
+	if (--evolveFlip_ <= 0)
+	{
+		evolveShowNew_ = !evolveShowNew_;
+		evolveFlip_ = std::max(3, 22 - evolveTimer_ / 10);
+	}
+
+	if (evolveTimer_ >= EVOLVE_FRAMES)
+	{
+		const std::string oldNick = mon->nickname;
+		const std::string newName = data_->GetMonster(evolveCur_.toId)->name;
+		ApplyEvolution(*mon, evolveCur_.toId);
+
+		evolved_ = true;
+		evolveState_ = EvolveState::RESULT;
+		steps_.clear();
+		insertIdx_ = 0;
+		PushSay("おめでとう！ " + oldNick + "は " + newName + "に しんかした！");
+		LearnEvolutionMoves(*mon);	// 進化後の種族の技（結果メッセージのあとに続く）
+		StartMessages();
+	}
+}
+
+void BattleScene::UpdateEvolveSelect(void)
+{
+	auto* input = InputManager::GetInstance();
+	const int count = static_cast<int>(evolveCur_.candidates.size());
+	MoveCursor(count);
+
+	if (input->IsTrgDown(KEY_INPUT_BACK))
+	{
+		CancelEvolve();
+		return;
+	}
+	if (input->IsTrgDown(KEY_INPUT_RETURN))
+	{
+		evolveCur_.toId = evolveCur_.candidates[cursor_];
+		evolveNewImg_ = evolveCandImgs_[cursor_];
+		BeginEvolveAnim();
+	}
+}
+
 void BattleScene::UpdateHpBars(void)
 {
 	for (auto& c : side_)
@@ -983,10 +1276,14 @@ void BattleScene::DrawHpBar(int x, int y, int w, int h, float ratio) const
 	DrawBox(x, y, x + static_cast<int>(w * ratio), y + h, color, TRUE);
 }
 
-// 画像の下端中央を(cx, bottomY)に合わせ、縦横の長い方がsizeに収まるよう縮尺して描く
 void BattleScene::DrawMonsterImage(int side, int cx, int bottomY, int size) const
 {
-	int img = side_[side].image;
+	DrawImageFit(side_[side].image, cx, bottomY, size);
+}
+
+// 画像の下端中央を(cx, bottomY)に合わせ、縦横の長い方がsizeに収まるよう縮尺して描く
+void BattleScene::DrawImageFit(int img, int cx, int bottomY, int size) const
+{
 	if (img == -1)
 	{
 		return;	// 画像なし（パス未記入・読み込み失敗）
@@ -1154,6 +1451,62 @@ void BattleScene::DrawLearnMenu(void) const
 	}
 	DrawString(SX(430), SY(202 + 4 * 26), "あきらめる", black);
 	DrawString(SX(405), SY(202 + cursor_ * 26), ">", black);
+}
+
+void BattleScene::DrawEvolve(void) const
+{
+	const unsigned int black = GetColor(0, 0, 0);
+
+	// 進化先の選択画面：左に候補のプレビュー、右に候補の一覧
+	if (evolveState_ == EvolveState::SELECT)
+	{
+		const int count = static_cast<int>(evolveCur_.candidates.size());
+		DrawImageFit(evolveCandImgs_[cursor_], SX(190), SY(320), SY(240));
+
+		const int boxH = SY(30 + count * 30);
+		DrawBox(SX(380), SY(60), SX(620), SY(60) + boxH, GetColor(255, 255, 255), TRUE);
+		DrawBox(SX(380), SY(60), SX(620), SY(60) + boxH, GetColor(60, 60, 60), FALSE);
+		for (int i = 0; i < count; i++)
+		{
+			const MonsterMasterData* m = data_->GetMonster(evolveCur_.candidates[i]);
+			DrawFormatString(SX(430), SY(75 + i * 30), black, "%s", (m != nullptr) ? m->name.c_str() : "？");
+		}
+		DrawString(SX(405), SY(75 + cursor_ * 30), ">", black);
+
+		DrawMessageBox("どの すがたに しんかする？");
+		DrawString(SX(24), SY(430), "BACKキー：しんかを やめる", GetColor(120, 120, 120));
+		return;
+	}
+
+	const int cx = SX(320);
+	const int bottom = SY(320);
+	const int size = SY(240);
+
+	int img = -1;
+	if (evolveState_ == EvolveState::ANIM)
+	{
+		img = evolveShowNew_ ? evolveNewImg_ : evolveOldImg_;
+	}
+	else
+	{
+		img = evolved_ ? evolveNewImg_ : evolveOldImg_;
+	}
+	DrawImageFit(img, cx, bottom, size);
+
+	// 演出中は、時間がたつほど白く光らせる
+	if (evolveState_ == EvolveState::ANIM)
+	{
+		const int glow = 40 + 160 * evolveTimer_ / EVOLVE_FRAMES;
+		SetDrawBlendMode(DX_BLENDMODE_ADD, glow);
+		DrawImageFit(img, cx, bottom, size);
+		SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+	}
+
+	DrawMessageBox(msg_);
+	if (evolveState_ == EvolveState::ANIM)
+	{
+		DrawString(SX(24), SY(430), "BACKキー：しんかを やめる", GetColor(120, 120, 120));
+	}
 }
 
 // =============================================================

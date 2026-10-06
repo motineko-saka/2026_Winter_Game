@@ -1,13 +1,13 @@
 #図鑑番号,名前,タイプ1,タイプ2,HP,攻撃,防御,素早さ,成長率,基礎経験値,捕獲率,アイコン画像パス,正面画像パス,背面画像パス,鳴き声パス,説明
-1,新井貴浩,WIND,,100,120,80,100,FAST,100,45,Data/Image/Monster/1/Monster1Icon.png,Data/Image/Monster/1/Monster1.png,Data/Image/Monster/1/arai.png,Data/Sound/Cry/001.wav,サンプルの説明文
-2,小園海斗,WIND,,100,80,120,100,MEDIUM,1000,45,Data/Image/Monster/Icon/002.png,Data/Image/Monster/1/kozono.png,Data/Image/Monster/Back/002.png,Data/Sound/Cry/002.wav,サンプルの説明文
-3,,WIND,,,,,,,,,,,,,
-4,,WATER,,,,,,,,,,,,,
-5,,WATER,,,,,,,,,,,,,
-6,,WATER,,,,,,,,,,,,,
-7,,FIRE,,,,,,,,,,,,,
-8,,FIRE,,,,,,,,,,,,,
-9,,FIRE,,,,,,,,,,,,,
+1,シルフ,WIND,ILLUSION,40,50,50,65,FAST,70,5,Data/Image/Monster/1/Monster1Icon.png,Data/Image/Monster/1/Monster1.png,Data/Image/Monster/1/Monster1.png,Data/Sound/Cry/001.wav,サンプルの説明文
+2,シルフィー,WIND,ILLUSION,70,80,60,80,MEDIUM,140,5,Data/Image/Monster/Icon/002.png,Data/Image/Monster/1/Monster1.png,Data/Image/Monster/1/MonsterBack.png,Data/Sound/Cry/002.wav,サンプルの説明文
+3,シルフィーネ,WIND,ILLUSION,80,110,70,120,MEDIUM,210,5,,,,,
+4,ルファウ,FIRE,NORMAL,60,40,60,30,FAST,100000,5,,Data/Image/Monster/4/004_flont.png,Data/Image/Monster/4/004_back.png,,
+5,ガルハウンド,FIRE,NORMAL,90,50,80,30,MEDIUM,140,5,,,,,
+6,レガルフレア,FIRE,NORMAL,150,70,120,30,MEDIUM,210,5,,,,,
+7,,WATER,,50,50,50,50,FAST,70,5,,,,,
+8,,WATER,,70,70,70,70,MEDIUM,140,5,,,,,
+9,,WATER,,90,90,90,90,MEDIUM,210,5,,,,,
 10,,,,,,,,,,,,,,,
 11,,,,,,,,,,,,,,,
 12,,,,,,,,,,,,,,,
@@ -119,7 +119,7 @@
 118,,,,,,,,,,,,,,,
 119,,,,,,,,,,,,,,,
 120,,,,,,,,,,,,,,,
-121,,,,,,,,,,,,,,,
+121,フラスパー,ILLUSION,,,,,,,,,,,,,
 122,,,,,,,,,,,,,,,
 123,,,,,,,,,,,,,,,
 124,,,,,,,,,,,,,,,
@@ -149,4 +149,4 @@
 148,,,,,,,,,,,,,,,
 149,,,,,,,,,,,,,,,
 150,,,,,,,,,,,,,,,
-151,,,,,,,,,,,,,,,
+151,まなみ,WATER,ILLUSION,,,,,,,,,,,,

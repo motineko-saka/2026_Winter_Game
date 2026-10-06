@@ -28,9 +28,9 @@ void GameScene::Init(void)
 	monsterData_.Init();
 	monsterParty_.Init();
 
-	// 図鑑番号1番のモンスターをLv5で手持ちに入れる
+	// 図鑑番号4番のモンスターをLv5で手持ちに入れる
 	MonsterInstance starter;
-	if (MonsterParty::Create(monsterData_, 1, 5, starter))
+	if (MonsterParty::Create(monsterData_, 4, 5, starter))
 	{
 		monsterParty_.Add(starter);
 	}
@@ -88,7 +88,7 @@ void GameScene::Update(void)
 	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_B))
 	{
 		auto battle = std::make_shared<BattleScene>();
-		battle->Setup(&monsterData_, &monsterParty_, 2, 3);  // 野生：図鑑番号2、Lv3
+		battle->Setup(&monsterData_, &monsterParty_, 4, 3);  // 野生：図鑑番号4、Lv3
 		SceneManager::GetInstance()->PushScene(battle);
 	}
 }
