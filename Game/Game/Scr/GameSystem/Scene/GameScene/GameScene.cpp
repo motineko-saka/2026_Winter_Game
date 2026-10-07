@@ -28,9 +28,9 @@ void GameScene::Init(void)
 	monsterData_.Init();
 	monsterParty_.Init();
 
-	// 図鑑番号4番のモンスターをLv5で手持ちに入れる
+	// 図鑑番号7番のモンスターをLv5で手持ちに入れる
 	MonsterInstance starter;
-	if (MonsterParty::Create(monsterData_, 4, 5, starter))
+	if (MonsterParty::Create(monsterData_, 7, 5, starter))
 	{
 		monsterParty_.Add(starter);
 	}

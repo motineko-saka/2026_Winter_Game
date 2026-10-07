@@ -9,7 +9,6 @@
 #include "../../../Utility/Utility.h"
 #include "../../Scene/SceneManager.h"
 #include "../../Scene/GameScene/GameScene.h"
-#include "../Stage/Stage.h"
 #include "../Stage/StageManager.h"
 
 #include "../../../Common/Debug.h"

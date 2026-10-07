@@ -137,6 +137,9 @@
     <ClCompile Include="Scr\Common\Vector2.cpp" />
     <ClCompile Include="Scr\Common\Vector2F.cpp" />
     <ClCompile Include="Scr\GameSystem\Loading\Loading.cpp" />
+    <ClCompile Include="Scr\GameSystem\Object\Item\Inventory.cpp" />
+    <ClCompile Include="Scr\GameSystem\Object\Item\ItemData.cpp" />
+    <ClCompile Include="Scr\GameSystem\Object\Item\ItemUse.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\Monsterbox.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterData.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterGrowth.cpp" />
@@ -167,6 +170,9 @@
     <ClInclude Include="Scr\Common\Vector2.h" />
     <ClInclude Include="Scr\Common\Vector2F.h" />
     <ClInclude Include="Scr\GameSystem\Loading\Loading.h" />
+    <ClInclude Include="Scr\GameSystem\Object\Item\Inventory.h" />
+    <ClInclude Include="Scr\GameSystem\Object\Item\ItemData.h" />
+    <ClInclude Include="Scr\GameSystem\Object\Item\ItemUse.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\Monsterbox.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterData.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterGrowth.h" />

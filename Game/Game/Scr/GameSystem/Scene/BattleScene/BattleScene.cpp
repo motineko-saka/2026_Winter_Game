@@ -8,6 +8,9 @@
 #include "../../../AppSystem/Application/Application.h"
 #include "../../Object/Monster/MonsterParty.h"	
 #include "../../Object/Monster/MonsterGrowth.h"
+#include "../../Object/Item/ItemData.h"
+#include "../../Object/Item/Inventory.h"
+#include "../../Object/Item/ItemUse.h"
 
 namespace
 {
@@ -50,14 +53,25 @@ void BattleScene::Setup(const MonsterData* data, MonsterParty* party, int wildMo
 	wildLevel_ = wildLevel;
 }
 
+void BattleScene::SetItems(const ItemData* items, Inventory* inventory)
+{
+	items_ = items;
+	inventory_ = inventory;
+}
+
 void BattleScene::Init(void)
 {
 	steps_.clear();
 	learnQueue_.clear();
 	evolveQueue_.clear();
 	evolveState_ = EvolveState::NONE;
+	evolveBegun_ = false;
 	needSwitch_ = false;
 	runAttempts_ = 0;
+	enemyInBall_ = false;
+	bagList_.clear();
+	usingItemId_ = 0;
+	itemTarget_ = 0;
 	result_ = Result::NONE;
 	cursor_ = 0;
 
@@ -144,6 +158,12 @@ void BattleScene::Update(void)
 	case Phase::LEARN_SELECT:
 		UpdateLearnSelect();
 		break;
+	case Phase::BAG:
+		UpdateBag();
+		break;
+	case Phase::ITEM_TARGET:
+		UpdateItemTarget();
+		break;
 	case Phase::EVOLVING:
 		UpdateEvolve();
 		break;
@@ -151,10 +171,14 @@ void BattleScene::Update(void)
 		UpdateEvolveSelect();
 		break;
 	case Phase::END:
-		// ゲーム画面に戻る
 		if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
 		{
-			SceneManager::GetInstance()->PopScene();
+			// バトルが完全に終わったあとで進化する（進化がなければそのままゲーム画面に戻る）
+			evolveBegun_ = true;
+			if (!StartNextEvolve())
+			{
+				SceneManager::GetInstance()->PopScene();
+			}
 		}
 		break;
 	}
@@ -176,7 +200,10 @@ void BattleScene::Draw(void)
 	}
 
 	// モンスター画像（敵＝右上、味方＝左下）
-	DrawMonsterImage(ENEMY, SX(480), SY(210), SY(180));
+	if (!enemyInBall_)
+	{
+		DrawMonsterImage(ENEMY, SX(480), SY(210), SY(180));
+	}
 	DrawMonsterImage(PLAYER, SX(170), SY(350), SY(200));
 
 	// 敵（左上）とプレイヤー（右下）の情報
@@ -203,6 +230,13 @@ void BattleScene::Draw(void)
 	case Phase::LEARN_SELECT:
 		DrawLearnMenu();
 		break;
+	case Phase::BAG:
+		DrawBagMenu();
+		break;
+	case Phase::ITEM_TARGET:
+		DrawMessageBox("だれに つかう？");
+		DrawPartyMenu();
+		break;
 	case Phase::EVOLVING:
 	case Phase::EVOLVE_SELECT:
 		break;	// DrawEvolveで描画済み
@@ -223,6 +257,8 @@ void BattleScene::Release(void)
 	learnQueue_.clear();
 	evolveQueue_.clear();
 	evolveState_ = EvolveState::NONE;
+	evolveBegun_ = false;
+	bagList_.clear();
 	side_ = {};
 }
 
@@ -320,17 +356,17 @@ void BattleScene::Finish(void)
 		return;
 	}
 
-	// 技の習得が全部終わったあとに進化（ポケモンと同じ順番）
-	while (!evolveQueue_.empty())
-	{
-		if (StartEvolve())
-		{
-			return;
-		}
-	}
-
 	if (result_ != Result::NONE)
 	{
+		// 戦闘終了後の進化の最中：次の進化へ。全部終わったらシーンを閉じる
+		if (evolveBegun_)
+		{
+			if (!StartNextEvolve())
+			{
+				SceneManager::GetInstance()->PopScene();
+			}
+			return;
+		}
 		phase_ = Phase::END;
 		return;
 	}
@@ -353,6 +389,13 @@ void BattleScene::BeginTurn(ActionType type, int arg)
 	{
 		// 交代は技より先
 		Push([this, arg]() { SwitchPlayer(arg); });
+		Push([this, enemySlot]() { ExecMove(ENEMY, enemySlot); });
+	}
+	else if (type == ActionType::ITEM)
+	{
+		// アイテム：arg＝アイテムID。ボールが成功すれば result_ が CAUGHT になり、敵の行動は行われない
+		const int target = itemTarget_;
+		Push([this, arg, target]() { UseItem(arg, target); });
 		Push([this, enemySlot]() { ExecMove(ENEMY, enemySlot); });
 	}
 	else if (type == ActionType::RUN)
@@ -437,6 +480,170 @@ int BattleScene::GetPriority(int side, int slot) const
 	}
 	const MoveData* move = data_->GetMove(side_[side].mon->moves[slot].moveId);
 	return (move != nullptr) ? move->priority : 0;
+}
+
+bool BattleScene::CanCatch(std::string& reason) const
+{
+	if (side_[ENEMY].master->catchRate <= 0)
+	{
+		reason = "この モンスターは つかまえられない！";
+		return false;
+	}
+	if (party_->IsFull())
+	{
+		reason = "てもちが いっぱいで つかまえられない！";
+		return false;
+	}
+	return true;
+}
+
+// アイテムを使う（BeginTurn のステップとして呼ばれる）
+// 効果の中身は Item.csv の「効果」「効果値」で決まる。
+void BattleScene::UseItem(int itemId, int partyIndex)
+{
+	const ItemMasterData* item = (items_ != nullptr) ? items_->GetItem(itemId) : nullptr;
+	if (item == nullptr || inventory_ == nullptr || !inventory_->Has(itemId))
+	{
+		Say("しかし なにも おこらなかった！");
+		return;
+	}
+	if (item->consumable)
+	{
+		inventory_->Remove(itemId);
+	}
+
+	switch (item->effect)
+	{
+	case ItemEffect::CATCH:
+		TryCatch(item->effectValue / 100.0, item->name);
+		return;
+
+	case ItemEffect::ATK_UP:
+	case ItemEffect::DEF_UP:
+		Say(item->name + "を つかった！");
+		ChangeRank(PLAYER, item->effect == ItemEffect::ATK_UP, item->effectValue);
+		return;
+
+	case ItemEffect::HEAL_HP:
+	case ItemEffect::REVIVE:
+	case ItemEffect::CURE_STATUS:
+	case ItemEffect::RESTORE_PP:
+	{
+		MonsterInstance* target = party_->Get(partyIndex);
+		std::string msg;
+		Say(item->name + "を つかった！");
+		if (target != nullptr && ItemUse::ApplyToMonster(*data_, *item, *target, msg))
+		{
+			PushSay(msg);
+		}
+		else
+		{
+			PushSay("しかし なにも おこらなかった！");
+		}
+		return;
+	}
+
+	default:
+		Say("しかし なにも おこらなかった！");
+		return;
+	}
+}
+
+// バッグに出すのは「持っていて、戦闘中に使える」アイテムだけ
+void BattleScene::RefreshBagList(void)
+{
+	bagList_.clear();
+	if (items_ == nullptr || inventory_ == nullptr)
+	{
+		return;
+	}
+	for (const auto& pair : inventory_->GetAll())
+	{
+		const ItemMasterData* item = items_->GetItem(pair.first);
+		if (item != nullptr && item->usableInBattle && pair.second > 0)
+		{
+			bagList_.push_back(pair.first);
+		}
+	}
+}
+
+// 捕獲判定（ポケモン第3世代に近い式）
+//  捕獲値 a = (3*最大HP - 2*現在HP) * 捕獲率 * ボール補正 * 状態異常補正 / (3*最大HP)
+//  a >= 255 なら確定で捕獲。そうでなければ4回のゆれ判定をすべて通れば捕獲。
+//  捕獲率は 1〜255 の想定（MonsterMaster.csv の値）。
+void BattleScene::TryCatch(double ballRate, const std::string& ballName)
+{
+	Combatant& e = side_[ENEMY];
+	const std::string name = e.mon->nickname;
+
+	enemyInBall_ = true;
+	Say(ballName + "を なげた！");
+
+	const double maxHp = std::max(1, MonsterParty::GetMaxHp(*data_, *e.mon));
+	const double hp = std::max(1, e.mon->currentHp);
+
+	double statusRate = 1.0;
+	if (e.mon->ailment == StatusAilment::SLEEP)
+	{
+		statusRate = 2.0;
+	}
+	else if (e.mon->ailment != StatusAilment::NONE)
+	{
+		statusRate = 1.5;
+	}
+
+	double a = (3.0 * maxHp - 2.0 * hp) * e.master->catchRate * ballRate * statusRate / (3.0 * maxHp);
+	a = std::max(1.0, a);
+
+	// ゆれる回数（0〜3）を決める。4回目まで通れば捕獲成功
+	int shakes = 0;
+	bool caught = false;
+	if (a >= 255.0)
+	{
+		caught = true;
+		shakes = 3;
+	}
+	else
+	{
+		const double b = 1048560.0 / std::sqrt(std::sqrt(16711680.0 / a));
+		while (shakes < 4 && Rand(0, 65535) < b)
+		{
+			shakes++;
+		}
+		caught = (shakes >= 4);
+		shakes = std::min(shakes, 3);
+	}
+
+	// ゆれの演出
+	for (int i = 0; i < shakes; i++)
+	{
+		PushSay(i == 0 ? "ボールが ゆれた…" : "…ゆれた…");
+	}
+
+	if (caught)
+	{
+		// 手持ちに加える（満員のときはそもそも投げられない）
+		party_->Add(enemy_);
+		// 手持ちの配列が再確保されても大丈夫なように、味方側のポインタを取り直す
+		side_[PLAYER].mon = party_->Get(activeIndex_);
+		result_ = Result::CAUGHT;
+		PushSay("やった！ " + name + "を つかまえた！");
+		return;
+	}
+
+	static const char* const failMsg[4] =
+	{
+		"ああっ！ ボールから でてしまった！",
+		"ううっ！ ボールから でてしまった！",
+		"ざんねん！ あと すこしだったのに！",
+		"おしい！ もうすこしで つかまえられたのに！",
+	};
+	std::string msg = failMsg[shakes];
+	Push([this, msg]()
+		{
+			enemyInBall_ = false;	// ボールから出てくる
+			Say(msg);
+		});
 }
 
 void BattleScene::ExecMove(int atk, int slot)
@@ -768,7 +975,7 @@ void BattleScene::GainPlayerExp(int amount)
 	if (r.newLevel > r.oldLevel)
 	{
 		PushSay(p->nickname + "は レベル" + std::to_string(r.newLevel) + "に あがった！");
-		CheckEvolution(*p, r.newLevel);	// 実際の進化は戦闘後（技の習得のあと）
+		CheckEvolution(*p, r.newLevel);	// 実際の進化はバトル終了後（ENDでEnterを押したあと）
 	}
 	for (int moveId : r.learnedMoves)
 	{
@@ -821,6 +1028,18 @@ void BattleScene::CheckEvolution(MonsterInstance& mon, int level)
 	evolveQueue_.push_back(entry);
 }
 
+bool BattleScene::StartNextEvolve(void)
+{
+	while (!evolveQueue_.empty())
+	{
+		if (StartEvolve())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 bool BattleScene::StartEvolve(void)
 {
 	evolveCur_ = evolveQueue_.front();
@@ -836,13 +1055,13 @@ bool BattleScene::StartEvolve(void)
 		return false;
 	}
 
-	evolveOldImg_ = LoadMonsterImage(oldMaster->backPath);
+	evolveOldImg_ = LoadMonsterImage(oldMaster->frontPath);	// 進化画面は正面画像
 
-	// 候補の画像を先に読んでおく（選択画面で使う）
+	// 候補の正面画像を先に読んでおく（選択画面と演出で使う）
 	evolveCandImgs_.clear();
 	for (int id : evolveCur_.candidates)
 	{
-		evolveCandImgs_.push_back(LoadMonsterImage(data_->GetMonster(id)->backPath));
+		evolveCandImgs_.push_back(LoadMonsterImage(data_->GetMonster(id)->frontPath));
 	}
 
 	// 候補が1つならそれで確定、複数なら選択後に上書きされる
@@ -968,7 +1187,7 @@ void BattleScene::ApplyEvolution(MonsterInstance& mon, int toId)
 		if (c.mon == &mon)
 		{
 			c.master = newMaster;
-			c.image = evolveNewImg_;
+			c.image = LoadMonsterImage(newMaster->backPath);	// 戦闘中の味方は背面画像
 		}
 	}
 }
@@ -1049,7 +1268,7 @@ bool BattleScene::HasUsableMove(void) const
 void BattleScene::UpdateCommand(void)
 {
 	auto* input = InputManager::GetInstance();
-	MoveCursor(3);
+	MoveCursor(4);
 
 	if (!input->IsTrgDown(KEY_INPUT_RETURN))
 	{
@@ -1073,7 +1292,12 @@ void BattleScene::UpdateCommand(void)
 		phase_ = Phase::PARTY_SELECT;
 		cursor_ = activeIndex_;
 		break;
-	case 2:	// にげる
+	case 2:	// バッグ
+		RefreshBagList();
+		phase_ = Phase::BAG;
+		cursor_ = 0;
+		break;
+	case 3:	// にげる
 		BeginTurn(ActionType::RUN, 0);
 		break;
 	}
@@ -1176,6 +1400,104 @@ void BattleScene::UpdateLearnSelect(void)
 	// メッセージ後、まだ覚えたい技があればFinishでまた選択に戻る
 	steps_.clear();
 	phase_ = Phase::MESSAGE;
+}
+
+void BattleScene::UpdateBag(void)
+{
+	auto* input = InputManager::GetInstance();
+	MoveCursor(static_cast<int>(bagList_.size()));
+
+	if (input->IsTrgDown(KEY_INPUT_BACK))
+	{
+		phase_ = Phase::COMMAND;
+		cursor_ = 2;
+		return;
+	}
+	if (!input->IsTrgDown(KEY_INPUT_RETURN) || bagList_.empty())
+	{
+		return;
+	}
+
+	const int itemId = bagList_[cursor_];
+	const ItemMasterData* item = items_->GetItem(itemId);
+	if (item == nullptr)
+	{
+		return;
+	}
+
+	// 使えない場合はターンを使わず、メッセージだけ出してコマンドへ戻る
+	auto refuse = [this](const std::string& reason)
+		{
+			steps_.clear();
+			insertIdx_ = 0;
+			PushSay(reason);
+			StartMessages();
+		};
+
+	if (item->effect == ItemEffect::CATCH)
+	{
+		std::string reason;
+		if (!CanCatch(reason))
+		{
+			refuse(reason);
+			return;
+		}
+		BeginTurn(ActionType::ITEM, itemId);
+	}
+	else if (ItemUse::NeedsTarget(*item))
+	{
+		usingItemId_ = itemId;
+		phase_ = Phase::ITEM_TARGET;
+		cursor_ = activeIndex_;
+	}
+	else if (item->effect == ItemEffect::ATK_UP || item->effect == ItemEffect::DEF_UP)
+	{
+		BeginTurn(ActionType::ITEM, itemId);
+	}
+	else
+	{
+		refuse("いまは つかえない！");
+	}
+}
+
+void BattleScene::UpdateItemTarget(void)
+{
+	auto* input = InputManager::GetInstance();
+	MoveCursor(party_->GetCount());
+
+	if (input->IsTrgDown(KEY_INPUT_BACK))
+	{
+		// バッグに戻る（さっき選んでいたアイテムにカーソルを合わせる）
+		phase_ = Phase::BAG;
+		auto it = std::find(bagList_.begin(), bagList_.end(), usingItemId_);
+		cursor_ = (it != bagList_.end()) ? static_cast<int>(it - bagList_.begin()) : 0;
+		return;
+	}
+	if (!input->IsTrgDown(KEY_INPUT_RETURN))
+	{
+		return;
+	}
+
+	const MonsterInstance* m = party_->Get(cursor_);
+	const ItemMasterData* item = items_->GetItem(usingItemId_);
+	if (m == nullptr || item == nullptr)
+	{
+		return;
+	}
+
+	std::string reason;
+	if (!ItemUse::CanUseOnMonster(*data_, *item, *m, reason))
+	{
+		// 使っても意味がない：アイテムは減らさず、ターンも使わない
+		steps_.clear();
+		insertIdx_ = 0;
+		PushSay(reason);
+		StartMessages();
+		return;
+	}
+
+	itemTarget_ = cursor_;
+	BeginTurn(ActionType::ITEM, usingItemId_);
 }
 
 void BattleScene::UpdateEvolve(void)
@@ -1351,15 +1673,15 @@ void BattleScene::DrawMessageBox(const std::string& text) const
 
 void BattleScene::DrawCommandMenu(void) const
 {
-	static const char* const items[3] = { "たたかう", "いれかえ", "にげる" };
+	static const char* const items[4] = { "たたかう", "いれかえ", "バッグ", "にげる" };
 
 	DrawBox(SX(400), SY(360), screenW_, screenH_, GetColor(255, 255, 255), TRUE);
 	DrawBox(SX(404), SY(364), screenW_ - SX(4), screenH_ - SY(4), GetColor(60, 60, 60), FALSE);
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 4; i++)
 	{
-		DrawFormatString(SX(450), SY(378 + i * 30), GetColor(0, 0, 0), "%s", items[i]);
+		DrawFormatString(SX(450), SY(372 + i * 26), GetColor(0, 0, 0), "%s", items[i]);
 	}
-	DrawString(SX(425), SY(378 + cursor_ * 30), "▶", GetColor(0, 0, 0));
+	DrawString(SX(425), SY(372 + cursor_ * 26), "▶", GetColor(0, 0, 0));
 }
 
 void BattleScene::DrawMoveMenu(void) const
@@ -1453,6 +1775,51 @@ void BattleScene::DrawLearnMenu(void) const
 	DrawString(SX(405), SY(202 + cursor_ * 26), ">", black);
 }
 
+void BattleScene::DrawBagMenu(void) const
+{
+	const unsigned int black = GetColor(0, 0, 0);
+	const int VISIBLE = 8;	// 一度に表示する行数
+	const int n = static_cast<int>(bagList_.size());
+
+	DrawBox(SX(280), SY(20), SX(620), SY(340), GetColor(245, 245, 255), TRUE);
+	DrawBox(SX(280), SY(20), SX(620), SY(340), GetColor(60, 60, 60), FALSE);
+
+	if (n == 0)
+	{
+		DrawString(SX(310), SY(40), "つかえる どうぐが ない", black);
+		DrawMessageBox("BACKキーで もどる");
+		return;
+	}
+
+	// カーソルが見える範囲にスクロール
+	const int first = std::max(0, std::min(cursor_ - 3, n - VISIBLE));
+	for (int i = 0; i < VISIBLE && first + i < n; i++)
+	{
+		const int id = bagList_[first + i];
+		const ItemMasterData* item = items_->GetItem(id);
+		if (item == nullptr)
+		{
+			continue;
+		}
+		const int y = SY(36 + i * 34);
+		DrawFormatString(SX(330), y, black, "%s", item->name.c_str());
+		DrawFormatString(SX(540), y, black, "x%2d", inventory_->GetCount(id));
+	}
+	DrawString(SX(300), SY(36 + (cursor_ - first) * 34), "▶", black);
+	if (first > 0)
+	{
+		DrawString(SX(595), SY(24), "↑", black);
+	}
+	if (first + VISIBLE < n)
+	{
+		DrawString(SX(595), SY(318), "↓", black);
+	}
+
+	// 選択中のアイテムの説明
+	const ItemMasterData* sel = items_->GetItem(bagList_[cursor_]);
+	DrawMessageBox((sel != nullptr) ? sel->description : "");
+}
+
 void BattleScene::DrawEvolve(void) const
 {
 	const unsigned int black = GetColor(0, 0, 0);
@@ -1471,7 +1838,7 @@ void BattleScene::DrawEvolve(void) const
 			const MonsterMasterData* m = data_->GetMonster(evolveCur_.candidates[i]);
 			DrawFormatString(SX(430), SY(75 + i * 30), black, "%s", (m != nullptr) ? m->name.c_str() : "？");
 		}
-		DrawString(SX(405), SY(75 + cursor_ * 30), ">", black);
+		DrawString(SX(405), SY(75 + cursor_ * 30), "▶", black);
 
 		DrawMessageBox("どの すがたに しんかする？");
 		DrawString(SX(24), SY(430), "BACKキー：しんかを やめる", GetColor(120, 120, 120));

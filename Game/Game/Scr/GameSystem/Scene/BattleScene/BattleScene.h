@@ -11,12 +11,15 @@
 #include "../../Object/Monster/MonsterData.h"	
 
 class MonsterParty;
+class ItemData;
+class Inventory;
 
 // 野生モンスターとの1対1バトルシーン
 //
 // 使い方（フィールド側）：
 //   auto battle = std::make_shared<BattleScene>();
 //   battle->Setup(&monsterData, &monsterParty, 野生の図鑑番号, レベル);
+//   battle->SetItems(&itemData, &inventory);	// バッグを使うなら（省略するとバッグは空扱い）
 //   SceneManager::GetInstance()->PushScene(battle);
 //   ※終了後の結果は battle->GetResult() で取れる（PopScene後もshared_ptrを持っていれば）
 class BattleScene : public SceneBase
@@ -30,6 +33,7 @@ public:
 		WIN,		// 勝った
 		LOSE,		// 全滅した
 		ESCAPED,	// 逃げた（開始できなかった場合も含む）
+		CAUGHT,		// 捕まえた（野生モンスターは手持ちに加わっている）
 	};
 
 	BattleScene(void);				// コンストラクタ
@@ -51,6 +55,9 @@ public:
 
 	Result GetResult(void) const { return result_; }
 
+	// バッグ（アイテム）を使えるようにする（PushScene の前に呼ぶ）
+	void SetItems(const ItemData* items, Inventory* inventory);
+
 private:
 
 	// ---------- 内部で使う型 ----------
@@ -62,6 +69,8 @@ private:
 		MOVE_SELECT,	// 技選択
 		PARTY_SELECT,	// 交代先選択
 		LEARN_SELECT,	// 技を忘れて新しい技を覚えるか選ぶ
+		BAG,			// バッグ（使うアイテムを選ぶ）
+		ITEM_TARGET,	// アイテムを使う手持ちを選ぶ
 		EVOLVING,		// 進化演出中（BACKでキャンセルできる）
 		EVOLVE_SELECT,	// 進化先を選ぶ（分岐進化）
 		END,			// 終了（Enterでシーンを閉じる）
@@ -72,6 +81,7 @@ private:
 		MOVE,
 		SWITCH,
 		RUN,
+		ITEM,
 	};
 
 	// 戦闘中だけ持つ情報（ランク補正など）
@@ -123,12 +133,17 @@ private:
 	int ChooseEnemyMove(void);				// -1ならわるあがき
 	int GetPriority(int side, int slot) const;
 	void ExecMove(int atk, int slot);
+	bool CanCatch(std::string& reason) const;	// 今ボールを投げられるか（だめなら理由が入る）
+	void TryCatch(double ballRate, const std::string& ballName);	// ボールを投げて捕獲判定をする
+	void UseItem(int itemId, int partyIndex);	// アイテムを使う（ターンの中で実行される）
+	void RefreshBagList(void);				// バッグに出す（戦闘中に使える）アイテムの一覧を作り直す
 	void ApplyEffect(int atk, const MoveData& move, int dealt);
 	void ChangeRank(int side, bool isAttack, int delta);
 	void EndOfTurnDamage(int side);
 	void OnFaint(int side);
 	void GainPlayerExp(int amount);
 	void CheckEvolution(MonsterInstance& mon, int level);	// レベルアップ後に進化できるか調べて、できれば待ち行列へ
+	bool StartNextEvolve(void);				// 待ち行列から、始められる進化を探して始める（なければfalse）
 	bool StartEvolve(void);					// 待ち行列の先頭の進化を始める（始められなければfalse）
 	void ApplyEvolution(MonsterInstance& mon, int toId);	// 種族・HP・名前などを進化後に書き換える
 	void BeginEvolveAnim(void);				// 進化演出を始める
@@ -142,6 +157,8 @@ private:
 	void UpdateMoveSelect(void);
 	void UpdatePartySelect(void);
 	void UpdateLearnSelect(void);
+	void UpdateBag(void);
+	void UpdateItemTarget(void);
 	void UpdateEvolve(void);
 	void UpdateEvolveSelect(void);
 	void MoveCursor(int count);
@@ -156,6 +173,7 @@ private:
 	void DrawMoveMenu(void) const;
 	void DrawPartyMenu(void) const;
 	void DrawLearnMenu(void) const;
+	void DrawBagMenu(void) const;
 	void DrawEvolve(void) const;
 	void DrawMonsterImage(int side, int cx, int bottomY, int size) const;
 	void DrawImageFit(int img, int cx, int bottomY, int size) const;	// 画像ハンドルを指定して描く
@@ -194,6 +212,12 @@ private:
 	Phase phase_ = Phase::MESSAGE;
 	Result result_ = Result::NONE;
 	int runAttempts_ = 0;
+	const ItemData* items_ = nullptr;	// アイテムのマスターデータ（外部から渡される）
+	Inventory* inventory_ = nullptr;	// 所持アイテム（外部から渡される）
+	std::vector<int> bagList_;			// バッグに表示するアイテムID（戦闘中に使えるものだけ）
+	int usingItemId_ = 0;				// 使おうとしているアイテム（対象選択中）
+	int itemTarget_ = 0;				// アイテムを使う手持ちの番号
+	bool enemyInBall_ = false;		// 野生モンスターがボールに入っている間は画像を消す
 
 	// メッセージ進行
 	std::string msg_;
@@ -206,14 +230,15 @@ private:
 	// 進化
 	std::deque<EvolveEntry> evolveQueue_;			// 進化待ち（戦闘後に順番に処理する）
 	EvolveState evolveState_ = EvolveState::NONE;
+	bool evolveBegun_ = false;						// 戦闘終了後の進化の処理に入ったか
 	EvolveEntry evolveCur_{};						// 今進化させようとしている個体
 	int evolveTimer_ = 0;							// 演出の経過フレーム
 	int evolveFlip_ = 0;							// 次に画像を切り替えるまでのフレーム
 	bool evolveShowNew_ = false;					// 演出中、進化後の画像を出しているか
 	bool evolved_ = false;							// 進化が確定したか（結果表示用）
-	int evolveOldImg_ = -1;							// 進化前の背面画像
-	int evolveNewImg_ = -1;							// 進化後の背面画像
-	std::vector<int> evolveCandImgs_;				// 進化先候補の背面画像（選択画面のプレビュー用）
+	int evolveOldImg_ = -1;							// 進化前の正面画像
+	int evolveNewImg_ = -1;							// 進化後の正面画像
+	std::vector<int> evolveCandImgs_;				// 進化先候補の正面画像（選択画面のプレビュー用）
 
 	int cursor_ = 0;
 
