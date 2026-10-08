@@ -23,6 +23,17 @@ struct WarpData {
 	int destX, destY;       // 移動先のマップでの出現マス座標 (X, Y)
 };
 
+// エンカウント情報を表す構造体
+struct EncounterData {
+	int stageId;            // 対象ステージID
+	int chipNo;             // エンカウント対象のマップチップ番号
+	int rate;               // 1歩ごとの遭遇確率(%)
+	int monsterId;          // 出現するモンスターの図鑑番号
+	int minLv;              // 最小レベル
+	int maxLv;              // 最大レベル
+	int weight;             // 出現の重み
+};
+
 // ステージ情報を表す構造体
 struct StageInfo {
 	int id;
@@ -89,6 +100,13 @@ public:
 	// プレイヤーの現在位置（ピクセル）からワープを判定する関数
 	// 引数に「次のマップファイル名」「移動先の新ピクセル座標」が格納される
 	bool CheckWarp(float playerX, float playerY, int& outNextStageId, float& outNewPx, float& outNewPy);
+
+	// エンカウントデータをcsvから読み込む関数
+	bool LoadEncounterData(const std::string& filename);
+
+	// プレイヤー位置(ピクセル)からエンカウント判定を行う関数
+	// マスが変わった時だけ判定する。遭遇したらモンスター番号とレベルが格納される
+	bool CheckEncounter(float playerX, float playerY, int& outMonsterId, int& outLevel);
 private:
 
 	// 静的インスタンス
@@ -98,6 +116,10 @@ private:
 
 	MapData currentMap;                     // 現在表示・管理しているマップデータ
 	std::vector<WarpData> warpList;         // 現在のマップに存在するワープのリスト
+
+	std::vector<EncounterData> encounterList_;  // エンカウント定義のリスト
+	int lastEncTileX_ = -1;                     // 前回エンカウント判定したマス(X)
+	int lastEncTileY_ = -1;                     // 前回エンカウント判定したマス(Y)
 
 	// 全ステージの情報を保持するマップ（IDをキーにする）
 	std::map<int, StageInfo> stageListMap;

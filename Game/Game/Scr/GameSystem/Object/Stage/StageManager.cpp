@@ -29,6 +29,9 @@ void StageManager::Init()
 	// ワープデータを読み込む
 	LoadWarpData("Data/Map/Mapcsv/WarpList.csv");
 
+	// エンカウントデータを読み込む
+	LoadEncounterData("Data/CSVData/EncounterList.csv");
+
 	ChangeStage(0);
 }
 
@@ -205,7 +208,7 @@ bool StageManager::LoadWarpData(const std::string& filename)
 		if (line.empty() || line[0] == '#') continue;
 
 		std::vector<std::string> strSplit = Utility::Split(line, ',');
-		if (strSplit.size() >= 6) { 
+		if (strSplit.size() >= 6) {
 			WarpData warp;
 			warp.stageId = std::stoi(strSplit[0]);     // ステージID
 			warp.x = std::stoi(strSplit[1]);           // ワープ元X
@@ -262,6 +265,10 @@ void StageManager::ChangeStage(int stageId)
 	LoadSingleCsv(info.objectCsv, objW, objH, newMap.objectTiles);
 
 	currentMap = newMap;
+
+	// エンカウント判定のマス記憶をリセット
+	lastEncTileX_ = -1;
+	lastEncTileY_ = -1;
 }
 
 bool StageManager::CheckWarp(float playerX, float playerY, int& outNextStageId, float& outNewPx, float& outNewPy)
@@ -277,6 +284,75 @@ bool StageManager::CheckWarp(float playerX, float playerY, int& outNextStageId, 
 			outNewPy = static_cast<float>(warp.destY * currentChipSizeY);
 			return true;
 		}
+	}
+	return false;
+}
+
+bool StageManager::LoadEncounterData(const std::string& filename)
+{
+	encounterList_.clear();
+	std::ifstream ifs(filename);
+	if (!ifs) return false;
+
+	std::string line;
+	while (getline(ifs, line)) {
+		if (line.empty() || line[0] == '#') continue;
+
+		std::vector<std::string> s = Utility::Split(line, ',');
+		if (s.size() >= 7) {
+			EncounterData e;
+			e.stageId = std::stoi(s[0]);
+			e.chipNo = std::stoi(s[1]);
+			e.rate = std::stoi(s[2]);
+			e.monsterId = std::stoi(s[3]);
+			e.minLv = std::stoi(s[4]);
+			e.maxLv = std::stoi(s[5]);
+			e.weight = std::stoi(s[6]);
+			encounterList_.push_back(e);
+		}
+	}
+	return true;
+}
+
+bool StageManager::CheckEncounter(float playerX, float playerY, int& outMonsterId, int& outLevel)
+{
+	int tileX = static_cast<int>(playerX) / currentChipSizeX;
+	int tileY = static_cast<int>(playerY) / currentChipSizeY;
+
+	// 同じマスにいる間は判定しない(1歩につき1回)
+	if (tileX == lastEncTileX_ && tileY == lastEncTileY_) return false;
+	lastEncTileX_ = tileX;
+	lastEncTileY_ = tileY;
+
+	if (tileX < 0 || tileY < 0 || tileX >= currentMap.width || tileY >= currentMap.height) return false;
+
+	int index = tileY * currentMap.width + tileX;
+	int groundNo = (index < currentMap.groundTiles.size()) ? currentMap.groundTiles[index] : -1;
+	int objectNo = (index < currentMap.objectTiles.size()) ? currentMap.objectTiles[index] : -1;
+
+	// このステージ・このチップに該当する行を集める
+	std::vector<const EncounterData*> candidates;
+	int totalWeight = 0;
+	for (const auto& e : encounterList_) {
+		if (e.stageId == currentStageId && (e.chipNo == groundNo || e.chipNo == objectNo)) {
+			candidates.push_back(&e);
+			totalWeight += e.weight;
+		}
+	}
+	if (candidates.empty() || totalWeight <= 0) return false;
+
+	// 確率判定
+	if (GetRand(99) >= candidates[0]->rate) return false;
+
+	// 重み付き抽選
+	int r = GetRand(totalWeight - 1);
+	for (const auto* e : candidates) {
+		if (r < e->weight) {
+			outMonsterId = e->monsterId;
+			outLevel = e->minLv + GetRand(e->maxLv - e->minLv);
+			return true;
+		}
+		r -= e->weight;
 	}
 	return false;
 }

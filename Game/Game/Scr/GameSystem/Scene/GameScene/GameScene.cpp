@@ -85,10 +85,13 @@ void GameScene::Update(void)
 	// プレイヤーのワールド座標を渡す
 	Camera2D::GetInstance()->ScreenMove(player_->GetWorldPosX(), player_->GetWorldPosY());
 
-	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_B))
+	// エンカウント判定(指定チップを踏んだ時に確率で遭遇)
+	int monsterId, level;
+	if (StageManager::GetInstance()->CheckEncounter(
+		player_->GetWorldPosX(), player_->GetWorldPosY(), monsterId, level))
 	{
 		auto battle = std::make_shared<BattleScene>();
-		battle->Setup(&monsterData_, &monsterParty_, 4, 3);  // 野生：図鑑番号4、Lv3
+		battle->Setup(&monsterData_, &monsterParty_, monsterId, level);
 		SceneManager::GetInstance()->PushScene(battle);
 	}
 }
