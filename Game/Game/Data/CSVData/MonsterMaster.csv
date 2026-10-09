@@ -2,7 +2,7 @@
 1,シルフ,WIND,ILLUSION,40,50,50,65,FAST,150,5,Data/Image/Monster/1/Monster1Icon.png,Data/Image/Monster/1/001_flont.png,Data/Image/Monster/1/Monster1.png,Data/Sound/Cry/001.wav,サンプルの説明文,,,
 2,シルフィー,WIND,ILLUSION,70,80,60,80,MEDIUM,140,5,Data/Image/Monster/Icon/002.png,Data/Image/Monster/1/Monster1.png,Data/Image/Monster/1/MonsterBack.png,Data/Sound/Cry/002.wav,サンプルの説明文,,,
 3,シルフィーネ,WIND,ILLUSION,80,110,70,120,MEDIUM,210,5,,,,,,,,
-4,ルファウ,FIRE,NORMAL,60,40,60,30,FAST,150,255,,Data/Image/Monster/4/004_flont.png,Data/Image/Monster/4/004_back.png,,,,,
+4,ルファウ,FIRE,NORMAL,60,40,60,30,FAST,100000,255,,Data/Image/Monster/4/004_flont.png,Data/Image/Monster/4/004_back.png,,,,,
 5,ガルハウンド,FIRE,NORMAL,90,50,80,30,MEDIUM,140,5,,,,,,,,
 6,レガルフレア,FIRE,NORMAL,150,70,120,30,MEDIUM,210,5,,,,,,,,
 7,ウィリュウ,WATER,DRAGON,50,50,50,50,FAST,150,5,,Data/Image/Monster/7/007_flont.png,Data/Image/Monster/7/007_back.png,,,,,

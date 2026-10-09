@@ -57,6 +57,12 @@ void SceneManager::Update(void)
 		// 現在のシーンの更新
 		scenes_.back()->Update();
 	}
+
+	// シーン内から予約された「全シーンを解放して切り替え」を実行する
+	if (reserveScene_ != nullptr)
+	{
+		ExecuteChangeAll();
+	}
 }
 
 // 描画
@@ -89,6 +95,7 @@ void SceneManager::Release(void)
 		scene->Release();
 	}
 	scenes_.clear();
+	reserveScene_ = nullptr;
 
 	// ロード画面の削除
 	Loading::GetInstance()->Release();
@@ -139,4 +146,26 @@ void SceneManager::JumpScene(std::shared_ptr<SceneBase> scene)
 
 	// 新しく積む
 	scenes_.push_back(scene);
+}
+
+void SceneManager::ChangeSceneAll(std::shared_ptr<SceneBase> scene)
+{
+	// すぐには切り替えず、予約だけしておく（呼び出し元のシーンが途中で消えるのを防ぐ）
+	reserveScene_ = scene;
+}
+
+void SceneManager::ExecuteChangeAll(void)
+{
+	std::shared_ptr<SceneBase> next = reserveScene_;
+	reserveScene_ = nullptr;
+
+	// 積まれているシーンを、上（新しい方）から順に解放して消す
+	for (auto it = scenes_.rbegin(); it != scenes_.rend(); ++it)
+	{
+		(*it)->Release();
+	}
+	scenes_.clear();
+
+	// 空になったので、ChangeScene が新しいシーンを入れてロードを始める
+	ChangeScene(next);
 }

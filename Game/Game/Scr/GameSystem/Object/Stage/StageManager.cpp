@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <stdexcept>
 #include "StageManager.h"
 #include "../../../Utility/Utility.h"
 #include "../../../AppSystem/Camera/Camera2D.h"
@@ -31,6 +32,9 @@ void StageManager::Init()
 
 	// エンカウントデータを読み込む
 	LoadEncounterData("Data/CSVData/EncounterList.csv");
+
+	// 通行不可チップを読み込む
+	LoadBlockData("Data/Map/Mapcsv/BlockList.csv");
 
 	ChangeStage(0);
 }
@@ -355,4 +359,75 @@ bool StageManager::CheckEncounter(float playerX, float playerY, int& outMonsterI
 		r -= e->weight;
 	}
 	return false;
+}
+
+bool StageManager::LoadBlockData(const std::string& filename)
+{
+	blockSet_.clear();
+	std::ifstream ifs(filename);
+	if (!ifs) return false;
+
+	std::string line;
+	while (getline(ifs, line)) {
+		if (line.empty() || line[0] == '#') continue;
+
+		std::vector<std::string> s = Utility::Split(line, ',');
+		if (s.size() >= 2) {
+			try {
+				int stageId = std::stoi(s[0]);	// -1なら全ステージ共通
+				int chipNo = std::stoi(s[1]);
+				blockSet_.insert(std::make_pair(stageId, chipNo));
+			}
+			catch (const std::exception&) {
+				// 「1,」のように数字になっていない行は読み飛ばす
+			}
+		}
+	}
+	return true;
+}
+
+bool StageManager::IsBlocked(float worldX, float worldY) const
+{
+	// マップの外を通行不可にするか（マップから出したくなければtrue）
+	static const bool BLOCK_OUTSIDE_MAP = true;
+
+	// マップの外（負の座標は0に丸められてしまうので先に弾く）
+	if (worldX < 0.0f || worldY < 0.0f) return BLOCK_OUTSIDE_MAP;
+
+	int tileX = static_cast<int>(worldX) / currentChipSizeX;
+	int tileY = static_cast<int>(worldY) / currentChipSizeY;
+	if (tileX >= currentMap.width || tileY >= currentMap.height) return BLOCK_OUTSIDE_MAP;
+
+	int index = tileY * currentMap.width + tileX;
+	int groundNo = (index < currentMap.groundTiles.size()) ? currentMap.groundTiles[index] : -1;
+	int objectNo = (index < currentMap.objectTiles.size()) ? currentMap.objectTiles[index] : -1;
+
+	// 地面レイヤー・オブジェクトレイヤーのどちらかが通行不可チップなら通れない
+	for (int chipNo : { groundNo, objectNo }) {
+		if (chipNo < 0) continue;
+		if (blockSet_.count(std::make_pair(currentStageId, chipNo)) > 0) return true;
+		if (blockSet_.count(std::make_pair(-1, chipNo)) > 0) return true;
+	}
+	return false;
+}
+
+bool StageManager::GetChipNos(float worldX, float worldY, int& outTileX, int& outTileY, int& outGround, int& outObject) const
+{
+	outTileX = -1;
+	outTileY = -1;
+	outGround = -1;
+	outObject = -1;
+
+	if (worldX < 0.0f || worldY < 0.0f) return false;
+
+	int tileX = static_cast<int>(worldX) / currentChipSizeX;
+	int tileY = static_cast<int>(worldY) / currentChipSizeY;
+	outTileX = tileX;
+	outTileY = tileY;
+	if (tileX >= currentMap.width || tileY >= currentMap.height) return false;
+
+	int index = tileY * currentMap.width + tileX;
+	if (index < currentMap.groundTiles.size()) outGround = currentMap.groundTiles[index];
+	if (index < currentMap.objectTiles.size()) outObject = currentMap.objectTiles[index];
+	return true;
 }

@@ -1,6 +1,6 @@
 #include "TitleScene.h"
 #include "../SceneManager.h"
-#include "../PauseScene/PauseScene.h"
+#include "../GameEndScene/GameEndScene.h"
 #include "../GameScene/GameScene.h"
 #include "../../../AppSystem/InputManager/InputManager.h"
 
@@ -31,7 +31,7 @@ void TitleScene::Update(void)
 	// ポーズ画面を積む
 	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_ESCAPE))
 	{
-		SceneManager::GetInstance()->PushScene(std::make_shared<PauseScene>());
+		SceneManager::GetInstance()->PushScene(std::make_shared<GameEndScene>());
 	}
 
 	// ゲーム画面に遷移

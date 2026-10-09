@@ -29,18 +29,11 @@ void MapScene::LoadEnd(void)
 
 void MapScene::Update(void)
 {
-	// ポーズ画面を積む
-	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_ESCAPE))
-	{
-		SceneManager::GetInstance()->PushScene(std::make_shared<PauseScene>());
-	}
-
 	// ゲーム画面に戻る
-	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_M))
+	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_ESCAPE))
 	{
 		SceneManager::GetInstance()->PopScene();
 	}
-
 }
 
 void MapScene::Draw(void)

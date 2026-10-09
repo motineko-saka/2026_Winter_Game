@@ -13,6 +13,13 @@
 
 #include "../../../Common/Debug.h"
 
+namespace
+{
+	// 当たり判定に使う足元の位置（画像の中心から下へのずれ、ピクセル）
+	// キャラ画像の大きさに合わせて調整する
+	const float FOOT_OFFSET_Y = 16.0f;
+}
+
 Player::Player() : ObjectBase()
 {
 	// 状態の登録
@@ -49,11 +56,11 @@ void Player::Init(void)
 
 void Player::Load(void)
 {
-	animHandle_[IDLE]	 = LoadGraph("Data/Image/Player/Idle.png");
-	animHandle_[WALK_A]	 = LoadGraph("Data/Image/Player/Beside_1.png");
-	animHandle_[WALK_B]	 = LoadGraph("Data/Image/Player/Beside_2.png");
-	animHandle_[UP_A]	 = LoadGraph("Data/Image/Player/Back_Walk_1.png");
-	animHandle_[UP_B]	 = LoadGraph("Data/Image/Player/Back_Walk_2.png");
+	animHandle_[IDLE] = LoadGraph("Data/Image/Player/Idle.png");
+	animHandle_[WALK_A] = LoadGraph("Data/Image/Player/Beside_1.png");
+	animHandle_[WALK_B] = LoadGraph("Data/Image/Player/Beside_2.png");
+	animHandle_[UP_A] = LoadGraph("Data/Image/Player/Back_Walk_1.png");
+	animHandle_[UP_B] = LoadGraph("Data/Image/Player/Back_Walk_2.png");
 	animHandle_[DOWN_A] = LoadGraph("Data/Image/Player/Walk_1.png");
 	animHandle_[DOWN_B] = LoadGraph("Data/Image/Player/Walk_2.png");
 }
@@ -111,7 +118,7 @@ void Player::MoveStateWalk(ObjectBase& obj)
 {
 	Player& player = static_cast<Player&>(obj);
 	player.image_.pos.x += player.movedPos_.x;
-	
+
 	// 歩きアニメ―ションの切り替え
 	if (player.moveAnimDelay_++ > WALK_ANIM_DELAY)
 	{
@@ -186,7 +193,7 @@ void Player::MoveController(void)
 	movedPos_.y = 0.0f;
 
 	MoveState moveState = MOVE_STATE_IDLE;
-	
+
 	// 走り
 	if (InputManager::GetInstance()->IsNew(KEY_INPUT_LSHIFT))
 	{
@@ -246,6 +253,18 @@ void Player::MoveController(void)
 
 		movedPos_.y = WALK_SPEED;
 		moveState = MOVE_STATE_DOWN;
+	}
+
+	// 進む先が通行不可のマスなら、その場で止まる（向きとアニメーションはそのまま）
+	if (movedPos_.x != 0.0f || movedPos_.y != 0.0f)
+	{
+		const float nextX = GetWorldPosX() + movedPos_.x;
+		const float nextY = GetWorldPosY() + movedPos_.y + FOOT_OFFSET_Y;
+		if (StageManager::GetInstance()->IsBlocked(nextX, nextY))
+		{
+			movedPos_.x = 0.0f;
+			movedPos_.y = 0.0f;
+		}
 	}
 
 	// 移動状態をセット

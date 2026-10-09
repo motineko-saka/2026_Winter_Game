@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <set>
 #include "../../../Common/Vector2.h"
 #include "../../../AppSystem/Application/Application.h"
 
@@ -107,6 +108,18 @@ public:
 	// プレイヤー位置(ピクセル)からエンカウント判定を行う関数
 	// マスが変わった時だけ判定する。遭遇したらモンスター番号とレベルが格納される
 	bool CheckEncounter(float playerX, float playerY, int& outMonsterId, int& outLevel);
+
+	// 通行不可チップの定義をcsvから読み込む関数
+	bool LoadBlockData(const std::string& filename);
+
+	// ワールド座標(ピクセル)のマスが通行不可か判定する関数
+	bool IsBlocked(float worldX, float worldY) const;
+
+	// デバッグ用：ワールド座標のマスと、そのマスのチップ番号を取得する（マップの外ならfalse）
+	bool GetChipNos(float worldX, float worldY, int& outTileX, int& outTileY, int& outGround, int& outObject) const;
+
+	// 現在のステージID
+	int GetCurrentStageId(void) const { return currentStageId; }
 private:
 
 	// 静的インスタンス
@@ -120,6 +133,9 @@ private:
 	std::vector<EncounterData> encounterList_;  // エンカウント定義のリスト
 	int lastEncTileX_ = -1;                     // 前回エンカウント判定したマス(X)
 	int lastEncTileY_ = -1;                     // 前回エンカウント判定したマス(Y)
+
+	// 通行不可チップ（ステージID, チップ番号）。ステージIDが-1なら全ステージ共通
+	std::set<std::pair<int, int>> blockSet_;
 
 	// 全ステージの情報を保持するマップ（IDをキーにする）
 	std::map<int, StageInfo> stageListMap;

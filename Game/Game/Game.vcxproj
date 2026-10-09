@@ -149,6 +149,7 @@
     <ClCompile Include="Scr\GameSystem\Object\Stage\StageManager.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\BattleScene\BattleScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GameClerScene\GameClerScene.cpp" />
+    <ClCompile Include="Scr\GameSystem\Scene\GameEndScene\GameEndScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GameScene\GameScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GemeOverScene\GameOverScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\MapScene\MapScene.cpp" />
@@ -184,6 +185,7 @@
     <ClInclude Include="Scr\GameSystem\Object\Stage\StageManager.h" />
     <ClInclude Include="Scr\GameSystem\Scene\BattleScene\BattleScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GameClerScene\GameClerScene.h" />
+    <ClInclude Include="Scr\GameSystem\Scene\GameEndScene\GameEndScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GameScene\GameScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GemeOverScene\GameOverScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\MapScene\MapScene.h" />

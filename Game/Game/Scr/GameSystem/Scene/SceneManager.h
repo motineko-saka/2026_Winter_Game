@@ -51,6 +51,11 @@ public:
 	// 強制的に特定のシーンに飛ぶ。リセットをかけ特定のシーンのみにする。
 	void JumpScene(std::shared_ptr<SceneBase> scene);
 
+	// 積んであるシーンを全て解放（Release）してから、指定のシーンに切り替える
+	// ポーズ画面などが積まれた状態から、タイトルなど別のシーンへ移るときに使う。
+	// 呼び出し中のシーン自身が消えても安全なように、実際の切り替えは同じフレームの Update の最後に行う。
+	void ChangeSceneAll(std::shared_ptr<SceneBase> scene);
+
 	// ゲーム終了
 	void GameEnd(void) { isGameEnd_ = true; }
 
@@ -62,9 +67,15 @@ private:
 	// 静的インスタンス
 	static SceneManager* instance_;
 
+	// ChangeSceneAll の実処理
+	void ExecuteChangeAll(void);
+
 	//Drawの関係上Backを最新のシーンとする
 	//基本的には要素は一つだけだがポーズシーンなどが積み重なる形
 	std::list<std::shared_ptr<SceneBase>>scenes_;
+
+	// ChangeSceneAll で予約された切り替え先
+	std::shared_ptr<SceneBase> reserveScene_;
 
 	// ゲーム終了
 	bool isGameEnd_;
