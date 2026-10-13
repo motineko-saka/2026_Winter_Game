@@ -13,6 +13,7 @@
 class MonsterParty;
 class ItemData;
 class Inventory;
+struct TrainerMasterData;
 
 // 野生モンスターとの1対1バトルシーン
 //
@@ -57,6 +58,13 @@ public:
 
 	// バッグ（アイテム）を使えるようにする（PushScene の前に呼ぶ）
 	void SetItems(const ItemData* items, Inventory* inventory);
+
+	// トレーナー戦の準備（PushScene の前に呼ぶ。Setup の代わりに使う）
+	//   ・相手の手持ちが順番に出てくる／ボールは使えない／逃げられない
+	void SetupTrainer(const MonsterData* data, MonsterParty* party, const TrainerMasterData* trainer);
+
+	// 勝ったときにもらえる賞金（トレーナー戦のみ。WINのあとに読む）
+	int GetPrize(void) const { return prize_; }
 
 private:
 
@@ -141,6 +149,10 @@ private:
 	void ChangeRank(int side, bool isAttack, int delta);
 	void EndOfTurnDamage(int side);
 	void OnFaint(int side);
+	bool CreateEnemy(void);					// 相手のモンスターを作る（野生なら1匹、トレーナーなら手持ち全部）
+	bool HasNextEnemy(void) const;			// トレーナーの手持ちに、次に出せるモンスターがいるか
+	void SendNextEnemy(void);				// トレーナーが次のモンスターを出す
+	void OnTrainerDefeated(void);			// トレーナーに勝ったときのメッセージと賞金
 	void GainPlayerExp(int amount);
 	void CheckEvolution(MonsterInstance& mon, int level);	// レベルアップ後に進化できるか調べて、できれば待ち行列へ
 	bool StartNextEvolve(void);				// 待ち行列から、始められる進化を探して始める（なければfalse）
@@ -218,6 +230,12 @@ private:
 	int usingItemId_ = 0;				// 使おうとしているアイテム（対象選択中）
 	int itemTarget_ = 0;				// アイテムを使う手持ちの番号
 	bool enemyInBall_ = false;		// 野生モンスターがボールに入っている間は画像を消す
+
+	// トレーナー戦（野生のときは trainer_ が nullptr）
+	const TrainerMasterData* trainer_ = nullptr;
+	std::vector<MonsterInstance> enemyParty_;	// トレーナーの手持ち
+	int enemyIndex_ = 0;						// 今出ている手持ちの番号
+	int prize_ = 0;								// もらった賞金
 
 	// メッセージ進行
 	std::string msg_;

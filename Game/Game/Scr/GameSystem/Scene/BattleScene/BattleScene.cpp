@@ -11,6 +11,7 @@
 #include "../../Object/Item/ItemData.h"
 #include "../../Object/Item/Inventory.h"
 #include "../../Object/Item/ItemUse.h"
+#include "../../Object/NPC/TrainerData.h"
 
 namespace
 {
@@ -51,6 +52,16 @@ void BattleScene::Setup(const MonsterData* data, MonsterParty* party, int wildMo
 	party_ = party;
 	wildId_ = wildMonsterId;
 	wildLevel_ = wildLevel;
+	trainer_ = nullptr;
+	prize_ = 0;
+}
+
+void BattleScene::SetupTrainer(const MonsterData* data, MonsterParty* party, const TrainerMasterData* trainer)
+{
+	data_ = data;
+	party_ = party;
+	trainer_ = trainer;
+	prize_ = 0;
 }
 
 void BattleScene::SetItems(const ItemData* items, Inventory* inventory)
@@ -100,7 +111,7 @@ void BattleScene::Init(void)
 		}
 	}
 	if (data_ == nullptr || first < 0
-		|| !MonsterParty::Create(*data_, wildId_, wildLevel_, enemy_)
+		|| !CreateEnemy()
 		|| data_->GetMonster(party_->Get(first)->monsterId) == nullptr)
 	{
 		result_ = Result::ESCAPED;
@@ -114,7 +125,19 @@ void BattleScene::Init(void)
 	SetCombatant(ENEMY, &enemy_);
 
 	// 開始メッセージ
-	Say(Name(ENEMY) + "が あらわれた！");
+	if (trainer_ != nullptr)
+	{
+		Say(trainer_->name + "が しょうぶを しかけてきた！");
+		if (!trainer_->introMessage.empty())
+		{
+			PushSay(trainer_->name + "「" + trainer_->introMessage + "」");
+		}
+		Push([this]() { Say(trainer_->name + "は " + enemy_.nickname + "を くりだした！"); });
+	}
+	else
+	{
+		Say(Name(ENEMY) + "が あらわれた！");
+	}
 	Push([this]() { Say("ゆけっ！ " + side_[PLAYER].mon->nickname + "！"); });
 	phase_ = Phase::MESSAGE;
 }
@@ -484,6 +507,11 @@ int BattleScene::GetPriority(int side, int slot) const
 
 bool BattleScene::CanCatch(std::string& reason) const
 {
+	if (trainer_ != nullptr)
+	{
+		reason = "ひとの モンスターは とれない！";
+		return false;
+	}
 	if (side_[ENEMY].master->catchRate <= 0)
 	{
 		reason = "この モンスターは つかまえられない！";
@@ -933,12 +961,26 @@ void BattleScene::OnFaint(int side)
 
 	if (side == ENEMY)
 	{
+		// トレーナー戦では、経験値が増える（第3引数＝トレーナー戦かどうか）
+		const int exp = MonsterGrowth::CalcGainExp(*side_[ENEMY].master, side_[ENEMY].mon->level, trainer_ != nullptr);
+
+		// トレーナーに次のモンスターがいるなら、経験値のあとに次を出す
+		if (trainer_ != nullptr && result_ == Result::NONE && HasNextEnemy())
+		{
+			Push([this, exp]() { GainPlayerExp(exp); });
+			Push([this]() { SendNextEnemy(); });
+			return;
+		}
+
 		if (result_ == Result::NONE)
 		{
 			result_ = Result::WIN;
 		}
-		const int exp = MonsterGrowth::CalcGainExp(*side_[ENEMY].master, side_[ENEMY].mon->level, false);
 		Push([this, exp]() { GainPlayerExp(exp); });
+		if (trainer_ != nullptr)
+		{
+			Push([this]() { OnTrainerDefeated(); });
+		}
 		return;
 	}
 
@@ -1298,7 +1340,18 @@ void BattleScene::UpdateCommand(void)
 		cursor_ = 0;
 		break;
 	case 3:	// にげる
-		BeginTurn(ActionType::RUN, 0);
+		if (trainer_ != nullptr)
+		{
+			// トレーナー戦では逃げられない（ターンは使わない）
+			steps_.clear();
+			insertIdx_ = 0;
+			PushSay("トレーナーとの しょうぶからは にげられない！");
+			StartMessages();
+		}
+		else
+		{
+			BeginTurn(ActionType::RUN, 0);
+		}
 		break;
 	}
 }
@@ -1883,10 +1936,75 @@ void BattleScene::DrawEvolve(void) const
 std::string BattleScene::Name(int side) const
 {
 	const std::string& n = side_[side].mon->nickname;
-	return (side == ENEMY) ? "野生の " + n : n;
+	if (side != ENEMY)
+	{
+		return n;
+	}
+	return (trainer_ != nullptr) ? "あいての " + n : "野生の " + n;
 }
 
 int BattleScene::Rand(int lo, int hi)
 {
 	return std::uniform_int_distribution<int>(lo, hi)(rng_);
+}
+
+// 相手のモンスターを作る
+bool BattleScene::CreateEnemy(void)
+{
+	enemyParty_.clear();
+	enemyIndex_ = 0;
+
+	// 野生：1匹だけ
+	if (trainer_ == nullptr)
+	{
+		return MonsterParty::Create(*data_, wildId_, wildLevel_, enemy_);
+	}
+
+	// トレーナー：手持ち全部を作る（作れないものは飛ばす）
+	for (const auto& e : trainer_->party)
+	{
+		MonsterInstance m{};
+		if (MonsterParty::Create(*data_, e.monsterId, e.level, m))
+		{
+			enemyParty_.push_back(m);
+		}
+	}
+	if (enemyParty_.empty())
+	{
+		return false;
+	}
+	enemy_ = enemyParty_[0];
+	return true;
+}
+
+bool BattleScene::HasNextEnemy(void) const
+{
+	return enemyIndex_ + 1 < static_cast<int>(enemyParty_.size());
+}
+
+void BattleScene::SendNextEnemy(void)
+{
+	// このターンの残り（出てきたばかりの相手の行動など）は行わない
+	steps_.clear();
+	insertIdx_ = 0;
+
+	enemyIndex_++;
+	enemy_ = enemyParty_[enemyIndex_];
+	SetCombatant(ENEMY, &enemy_);
+
+	Say(trainer_->name + "は " + enemy_.nickname + "を くりだした！");
+}
+
+void BattleScene::OnTrainerDefeated(void)
+{
+	Say(trainer_->name + "との しょうぶに かった！");
+	if (!trainer_->defeatMessage.empty())
+	{
+		PushSay(trainer_->name + "「" + trainer_->defeatMessage + "」");
+	}
+	if (trainer_->prize > 0)
+	{
+		prize_ = trainer_->prize;
+		PushSay("しょうきんとして " + std::to_string(prize_) + "円を てにいれた！");
+	}
 }

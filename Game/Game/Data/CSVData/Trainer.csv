@@ -1,0 +1,14 @@
+# id,name,imagePath,prize,introMessage,defeatMessage,party(monsterId:level|monsterId:level)
+# imagePath:,,,,,,
+#   Data/Image/Trainer/Ken/      = folder (ends with /). same file names as the player:,,,,,,
+#                                  Idle.png, Walk_1/2.png (down), Back_Walk_1/2.png (up), Beside_1/2.png (right; left = mirrored),,,
+#                                  optional standing images: Back_Idle.png, Beside_Idle.png,,,,,
+#   ken.png                      = one image for every direction,,,,,,
+#   ken.png@4                    = 4 columns: UP,DOWN,LEFT,RIGHT (no walking),,,
+#   ken.png@3x4                  = 3 frames (columns) x 4 directions (rows: UP,DOWN,LEFT,RIGHT),,,
+#   up.png|down.png|left.png|right.png      = one image per direction,,,,,,
+#   up.png@3|down.png@3|left.png@3|right.png@3 = frames split horizontally, per direction,,,,,
+#   (empty)                      = placeholder box,,,,,,
+# first frame = standing. walking: 2 frames alternate / 3+ frames loop without the first,,,,,,
+# messages must not contain commas,,,,,,
+1,Ç®èÏólÅ@Ç‹ÇËÇ†,Data/Image/Player/Idle.png,200,ÇÌÇΩÇ≠ÇµÇ∆èüïâÇ»Ç≥ÇÈÇÃÅH,ïâÇØÇ‹ÇµÇΩÇÌ,4:3|10:3

@@ -1,0 +1,3 @@
+# stageId,tileX,tileY,trainerId,dir(UP/DOWN/LEFT/RIGHT),sight(tiles)
+# sample only. use one spawn per trainerId. replace with real positions
+1,10,8,1,DOWN,4

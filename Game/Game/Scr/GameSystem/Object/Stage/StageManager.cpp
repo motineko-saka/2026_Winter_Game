@@ -34,7 +34,7 @@ void StageManager::Init()
 	LoadEncounterData("Data/CSVData/EncounterList.csv");
 
 	// 通行不可チップを読み込む
-	LoadBlockData("Data/Map/Mapcsv/BlockList.csv");
+	LoadBlockData("Data/CSVData/BlockList.csv");
 
 	ChangeStage(0);
 }
@@ -273,6 +273,7 @@ void StageManager::ChangeStage(int stageId)
 	// エンカウント判定のマス記憶をリセット
 	lastEncTileX_ = -1;
 	lastEncTileY_ = -1;
+
 }
 
 bool StageManager::CheckWarp(float playerX, float playerY, int& outNextStageId, float& outNewPx, float& outNewPy)
@@ -397,6 +398,9 @@ bool StageManager::IsBlocked(float worldX, float worldY) const
 	int tileX = static_cast<int>(worldX) / currentChipSizeX;
 	int tileY = static_cast<int>(worldY) / currentChipSizeY;
 	if (tileX >= currentMap.width || tileY >= currentMap.height) return BLOCK_OUTSIDE_MAP;
+
+	// トレーナーなどが立っているマスは通れない
+	if (extraBlockTiles_.count(std::make_pair(tileX, tileY)) > 0) return true;
 
 	int index = tileY * currentMap.width + tileX;
 	int groundNo = (index < currentMap.groundTiles.size()) ? currentMap.groundTiles[index] : -1;

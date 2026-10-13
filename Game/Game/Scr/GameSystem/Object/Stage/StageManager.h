@@ -120,6 +120,18 @@ public:
 
 	// 現在のステージID
 	int GetCurrentStageId(void) const { return currentStageId; }
+
+	// マップチップの大きさ（ピクセル）
+	int GetChipSizeX(void) const { return currentChipSizeX; }
+	int GetChipSizeY(void) const { return currentChipSizeY; }
+
+	// チップとは別に通行不可にするマス（トレーナーが立っているマスなど）を設定する
+	// ステージを切り替えたら、呼び出し側で設定し直すこと
+	void SetExtraBlockTiles(const std::vector<std::pair<int, int>>& tiles)
+	{
+		extraBlockTiles_.clear();
+		for (const auto& t : tiles) { extraBlockTiles_.insert(t); }
+	}
 private:
 
 	// 静的インスタンス
@@ -136,6 +148,9 @@ private:
 
 	// 通行不可チップ（ステージID, チップ番号）。ステージIDが-1なら全ステージ共通
 	std::set<std::pair<int, int>> blockSet_;
+
+	// 追加の通行不可マス（マス座標）
+	std::set<std::pair<int, int>> extraBlockTiles_;
 
 	// 全ステージの情報を保持するマップ（IDをキーにする）
 	std::map<int, StageInfo> stageListMap;

@@ -144,6 +144,7 @@
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterData.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterGrowth.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterParty.cpp" />
+    <ClCompile Include="Scr\GameSystem\Object\NPC\Trainerdata.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\ObjectBase.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Player\Player.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Stage\StageManager.cpp" />
@@ -153,6 +154,7 @@
     <ClCompile Include="Scr\GameSystem\Scene\GameScene\GameScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GemeOverScene\GameOverScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\MapScene\MapScene.cpp" />
+    <ClCompile Include="Scr\GameSystem\Scene\NovelScene\NovelScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\PauseScene\PauseScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneBase.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneManager.cpp" />
@@ -178,6 +180,7 @@
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterData.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterGrowth.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterParty.h" />
+    <ClInclude Include="Scr\GameSystem\Object\NPC\Trainerdata.h" />
     <ClInclude Include="Scr\GameSystem\Object\ObjcetState.h" />
     <ClInclude Include="Scr\GameSystem\Object\ObjectBase.h" />
     <ClInclude Include="Scr\GameSystem\Object\Player\Player.h" />
@@ -189,6 +192,8 @@
     <ClInclude Include="Scr\GameSystem\Scene\GameScene\GameScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GemeOverScene\GameOverScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\MapScene\MapScene.h" />
+    <ClInclude Include="Scr\GameSystem\Scene\NovelScene\Novel.hpp" />
+    <ClInclude Include="Scr\GameSystem\Scene\NovelScene\NovelScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\PauseScene\PauseScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneBase.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneManager.h" />
