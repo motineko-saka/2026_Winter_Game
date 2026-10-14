@@ -326,7 +326,7 @@ void GameScene::Init(void)
 
 	// テスト用：Item.csv の ID 1〜5 を5個ずつ持たせる（存在するIDだけ）
 	// ※本番では、ショップや拾得で増える形に差し替える
-	for (int id = 1; id <= 5; id++)
+	for (int id = 1; id <= 15; id++)
 	{
 		if (itemData_.GetItem(id) != nullptr)
 		{
