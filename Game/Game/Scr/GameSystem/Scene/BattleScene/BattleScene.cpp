@@ -778,7 +778,7 @@ void BattleScene::ExecMove(int atk, int slot)
 		}
 		if (eff > 1.0f)
 		{
-			PushSay("こうかは ばつぐんだ！");
+			PushSay("エレガントな一撃！");
 		}
 		else if (eff < 1.0f)
 		{

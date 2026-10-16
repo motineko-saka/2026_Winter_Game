@@ -34,7 +34,7 @@ void StageManager::Init()
 	LoadEncounterData("Data/CSVData/EncounterList.csv");
 
 	// 通行不可チップを読み込む
-	LoadBlockData("Data/CSVData/BlockList.csv");
+	LoadBlockData("Data/Map/Mapcsv/BlockList.csv");
 
 	ChangeStage(0);
 }
