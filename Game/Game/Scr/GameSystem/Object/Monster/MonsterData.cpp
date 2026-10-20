@@ -52,6 +52,18 @@ namespace
 		return table;
 	}
 
+	const std::unordered_map<std::string, AnimPos>& AnimPosTable(void)
+	{
+		static const std::unordered_map<std::string, AnimPos> table =
+		{
+			{ "",       AnimPos::TARGET },
+			{ "TARGET", AnimPos::TARGET },
+			{ "USER",   AnimPos::USER },
+			{ "CENTER", AnimPos::CENTER },
+		};
+		return table;
+	}
+
 	const std::unordered_map<std::string, GrowthRate>& GrowthTable(void)
 	{
 		static const std::unordered_map<std::string, GrowthRate> table =
@@ -162,6 +174,7 @@ void MonsterData::Load(void)
 	ok &= LoadMonsters("Data/CSVData/MonsterMaster.csv");
 	ok &= LoadLearnset("Data/CSVData/MonsterLearnset.csv");
 	ok &= LoadEvolution("Data/CSVData/MonsterEvolution.csv");
+	ok &= LoadMoveAnims("Data/CSVData/MoveAnim.csv");
 
 	//// 失敗したらパスやCSVの内容（タイプの綴りなど）を確認する
 	//assert(ok && "CSVの読み込みに失敗しました");
@@ -183,6 +196,7 @@ void MonsterData::Release(void)
 {
 	moves_.clear();
 	monsters_.clear();
+	moveAnims_.clear();
 }
 
 bool MonsterData::LoadTypeChart(const std::string& path)
@@ -228,7 +242,7 @@ float MonsterData::GetTypeEffectiveness(ElementType atk, ElementType def1, Eleme
 	return rate;
 }
 
-// 技：#技ID,技名,タイプ,威力,命中率,最大PP,優先度,追加効果,効果の数値,効果の発動確率,説明
+// 技：#技ID,技名,タイプ,威力,命中率,最大PP,優先度,追加効果,効果の数値,効果の発動確率,説明,アニメID(省略可),相手用アニメID(省略可)
 bool MonsterData::LoadMoves(const std::string& path)
 {
 	std::vector<std::vector<std::string>> rows;
@@ -265,6 +279,8 @@ bool MonsterData::LoadMoves(const std::string& path)
 			m.effectValue = ToInt(r[8]);
 			m.effectChance = ToInt(r[9]);
 			m.description = r[10];
+			m.animId = (r.size() > 11) ? ToInt(r[11]) : 0;	// 技エフェクトのID（省略可）
+			m.enemyAnimId = (r.size() > 12) ? ToInt(r[12]) : 0;	// 相手が使うときのエフェクトID（省略可）
 
 			moves_[m.id] = m;
 		}
@@ -410,6 +426,76 @@ bool MonsterData::LoadEvolution(const std::string& path)
 		return false;
 	}
 	return true;
+}
+
+// 技エフェクト：#アニメID,画像パス,1コマ幅,1コマ高さ,コマ数,横のコマ数,1コマのフレーム数,拡大率(%),繰り返し,合成(NORMAL/ADD),位置(TARGET/USER/CENTER)
+bool MonsterData::LoadMoveAnims(const std::string& path)
+{
+	std::vector<std::vector<std::string>> rows;
+	if (!ReadCsv(path, rows))
+	{
+		return false;
+	}
+
+	moveAnims_.clear();
+	try
+	{
+		for (const auto& r : rows)
+		{
+			if (r.size() < 11)
+			{
+				return false;
+			}
+
+			MoveAnimData a{};
+			a.id = ToInt(r[0]);
+			a.imagePath = r[1];
+			a.frameW = ToInt(r[2]);
+			a.frameH = ToInt(r[3]);
+			a.frameCount = ToInt(r[4]);
+			a.columns = ToInt(r[5]);
+			a.frameTime = ToInt(r[6]);
+			a.scalePercent = ToInt(r[7]);
+			a.loops = ToInt(r[8]);
+
+			if (r[9] == "ADD")
+			{
+				a.additive = true;
+			}
+			else if (!r[9].empty() && r[9] != "NORMAL")
+			{
+				return false;	// 合成の綴り間違い
+			}
+			if (!ParseEnum(AnimPosTable(), r[10], a.pos))
+			{
+				return false;	// 位置の綴り間違い
+			}
+
+			// 空欄・0は既定値にする
+			if (a.frameW <= 0 || a.frameH <= 0)
+			{
+				return false;	// コマのサイズは必須
+			}
+			if (a.frameCount <= 0) { a.frameCount = 1; }
+			if (a.columns <= 0) { a.columns = a.frameCount; }
+			if (a.frameTime <= 0) { a.frameTime = 3; }
+			if (a.scalePercent <= 0) { a.scalePercent = 100; }
+			if (a.loops <= 0) { a.loops = 1; }
+
+			moveAnims_[a.id] = a;
+		}
+	}
+	catch (const std::exception&)
+	{
+		return false;
+	}
+	return true;
+}
+
+const MoveAnimData* MonsterData::GetMoveAnim(int id) const
+{
+	auto it = moveAnims_.find(id);
+	return (it != moveAnims_.end()) ? &it->second : nullptr;
 }
 
 const MoveData* MonsterData::GetMove(int id) const

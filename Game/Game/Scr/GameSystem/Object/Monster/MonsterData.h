@@ -64,6 +64,14 @@ enum class GrowthRate
 	SLOW,    // 遅い
 };
 
+// 技エフェクトの表示位置
+enum class AnimPos
+{
+	TARGET,   // 技を受ける側
+	USER,     // 技を使った側
+	CENTER,   // 画面中央
+};
+
 // ---------- マスターデータ（変わらない定義） ----------
 
 // 技
@@ -80,6 +88,24 @@ struct MoveData
 	int effectValue;     // 効果の数値（上昇段階、回復量など）
 	int effectChance;    // 効果発動確率（%）
 	std::string description; // 説明
+	int animId = 0;      // 技エフェクトのID（自分が使うとき。0ならエフェクトなし）
+	int enemyAnimId = 0; // 相手が使うときのエフェクトID（0なら animId と同じ）
+};
+
+// 技エフェクト（1枚のスプライトシートをコマ送りで再生する）
+struct MoveAnimData
+{
+	int id = 0;
+	std::string imagePath;   // スプライトシートのパス
+	int frameW = 0;          // 1コマの幅
+	int frameH = 0;          // 1コマの高さ
+	int frameCount = 1;      // コマ数
+	int columns = 0;         // シートの横のコマ数
+	int frameTime = 3;       // 1コマを見せるフレーム数
+	int scalePercent = 100;  // 拡大率(%)
+	int loops = 1;           // 繰り返し回数
+	bool additive = false;   // 加算合成で描くか
+	AnimPos pos = AnimPos::TARGET;	// 表示位置
 };
 
 // レベルアップで覚える技
@@ -186,11 +212,17 @@ public:
 	// 進化条件のデータをCSVから読み込む関数
 	bool LoadEvolution(const std::string& path);
 
+	// 技エフェクトのデータをCSVから読み込む関数
+	bool LoadMoveAnims(const std::string& path);
+
 	// 技のマスターデータを取得する関数
 	const MoveData* GetMove(int id) const;
 
 	// モンスターのマスターデータを取得する関数
 	const MonsterMasterData* GetMonster(int id) const;
+
+	// 技エフェクトのデータを取得する関数
+	const MoveAnimData* GetMoveAnim(int id) const;
 
 private:
 
@@ -199,5 +231,6 @@ private:
 	// マスターデータのコンテナ（IDをキーにして高速検索）
 	std::unordered_map<int, MonsterMasterData> monsters_;
 	std::unordered_map<int, MoveData> moves_;
+	std::unordered_map<int, MoveAnimData> moveAnims_;
 };
 

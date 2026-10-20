@@ -1,3 +1,4 @@
 #マップID,地面csv,オブジェクトcsv,マップチップ画像,一つのチップのサイズのX,一つのチップのサイズのY,マップチップ画像のXの数,マップチップ画像のYの数
 0,Data/Map/Mapcsv/simonoseki.csv,,Data/Image/Map/Mapchip.png,32,32,32,32
 1,Data/Map/Mapcsv/1.csv,,Data/Image/Map/Mapchip.png,32,32,32,32
+2,Data/Map/Mapcsv/2.csv,,Data/Image/Map/mapchip1.png,64,64,10,10

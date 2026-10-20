@@ -122,6 +122,29 @@ private:
 		std::vector<int> candidates;	// 進化できる先の候補（2つ以上なら選ばせる）
 	};
 
+	// 技の演出の進行（前に出る → エフェクト → 食らう → 戻る）
+	enum class MoveAnimStage
+	{
+		LUNGE,		// 技を使う側が、少し前に出る
+		EFFECT,		// 技エフェクトの再生
+		HIT,		// 技を受けた側が、赤く点滅して左右に揺れる
+		RETURN,		// 技を使った側が、元の位置に戻る
+	};
+
+	// 再生中の技の演出
+	struct MoveAnimPlay
+	{
+		bool active = false;
+		MoveAnimStage stage = MoveAnimStage::LUNGE;
+		const MoveAnimData* anim = nullptr;			// nullptrなら画像エフェクトなし
+		const std::vector<int>* frames = nullptr;	// 分割済みの画像ハンドル
+		int attacker = 0;		// 技を使った側（PLAYER / ENEMY）
+		int side = 0;			// エフェクトを描く側（PLAYER / ENEMY）
+		bool lunge = false;		// 前に出る演出をするか（攻撃技のみ）
+		bool hit = false;		// 相手にダメージが入ったか（入ったら食らう演出をする）
+		int timer = 0;			// 今のステージの経過フレーム
+	};
+
 	// 1ステップ＝1メッセージ分の処理
 	using Step = std::function<void(void)>;
 
@@ -189,6 +212,12 @@ private:
 	void DrawEvolve(void) const;
 	void DrawMonsterImage(int side, int cx, int bottomY, int size) const;
 	void DrawImageFit(int img, int cx, int bottomY, int size) const;	// 画像ハンドルを指定して描く
+	void StartMoveAnim(const MoveData& move, int atk);	// 技のエフェクトを始める
+	void UpdateMoveAnim(void);							// エフェクトの更新
+	void DrawMoveAnim(void) const;						// エフェクトの描画
+	int MoveAnimStageFrames(void) const;				// 今の演出ステージの長さ（0なら飛ばす）
+	void GetMonsterAnimOffset(int side, int& ox, int& oy, bool& red) const;	// モンスター画像のずれ（前に出る・揺れる）と赤点滅
+	const std::vector<int>* LoadAnimFrames(const MoveAnimData& anim);	// シートを分割して読み込む（キャッシュあり）
 
 	// ---------- 補助 ----------
 	int LoadMonsterImage(const std::string& path);	// パスから画像を読み込む（同じパスはキャッシュを返す）
@@ -203,6 +232,8 @@ private:
 	static const int ENEMY = 1;
 
 	static const int EVOLVE_FRAMES = 240;	// 進化演出の長さ（60fpsで約4秒）
+	static const int MOVE_LUNGE_FRAMES = 10;	// 技を出す前に前へ出る（戻る）フレーム数
+	static const int MOVE_HIT_FRAMES = 30;		// 技を食らったときの点滅・揺れのフレーム数
 
 	// レイアウトの設計基準サイズ（この値を基準に実画面へ拡縮する）
 	static const int BASE_W = 640;
@@ -263,4 +294,7 @@ private:
 	std::unordered_map<std::string, int> images_;	// パス→画像ハンドルのキャッシュ
 
 	std::mt19937 rng_;
+
+	MoveAnimPlay moveAnim_;
+	std::unordered_map<int, std::vector<int>> animFrames_;	// アニメID→分割した画像ハンドル
 };

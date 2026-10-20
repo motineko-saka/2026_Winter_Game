@@ -152,6 +152,7 @@ void BattleScene::LoadEnd(void)
 
 void BattleScene::Update(void)
 {
+	UpdateMoveAnim();
 	UpdateHpBars();
 
 	// ポーズ画面を積む
@@ -164,7 +165,8 @@ void BattleScene::Update(void)
 	switch (phase_)
 	{
 	case Phase::MESSAGE:
-		if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
+		// 技の演出中はEnterを受け付けない（演出が終わってから次へ進める）
+		if (!moveAnim_.active && InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
 		{
 			RunNextStep();
 		}
@@ -228,6 +230,7 @@ void BattleScene::Draw(void)
 		DrawMonsterImage(ENEMY, SX(480), SY(210), SY(180));
 	}
 	DrawMonsterImage(PLAYER, SX(170), SY(350), SY(200));
+	DrawMoveAnim();	// 技エフェクト（ステータス枠より下に描く）
 
 	// 敵（左上）とプレイヤー（右下）の情報
 	DrawStatusBox(ENEMY, SX(30), SY(30));
@@ -275,6 +278,18 @@ void BattleScene::Release(void)
 			DeleteGraph(pair.second);
 		}
 	}
+	for (auto& pair : animFrames_)
+	{
+		for (int h : pair.second)
+		{
+			if (h != -1)
+			{
+				DeleteGraph(h);
+			}
+		}
+	}
+	animFrames_.clear();
+	moveAnim_ = {};
 	images_.clear();
 	steps_.clear();
 	learnQueue_.clear();
@@ -733,6 +748,9 @@ void BattleScene::ExecMove(int atk, int slot)
 		return;
 	}
 
+	// 技の演出を開始（前に出る → エフェクト。命中したときだけ）
+	StartMoveAnim(*move, atk);
+
 	// ダメージ計算
 	int dealt = 0;
 	if (move->power > 0)
@@ -771,6 +789,10 @@ void BattleScene::ExecMove(int atk, int slot)
 		dealt = std::max(1, static_cast<int>(dmg));
 		dealt = std::min(dealt, d.mon->currentHp);
 		d.mon->currentHp -= dealt;
+		if (moveAnim_.active)
+		{
+			moveAnim_.hit = true;	// ダメージが入った：エフェクトのあとに、相手が赤く点滅して揺れる
+		}
 
 		if (crit)
 		{
@@ -1256,6 +1278,192 @@ void BattleScene::SetCombatant(int side, MonsterInstance* mon)
 	}
 }
 
+// シートを1コマずつに分割して読み込む。同じIDはキャッシュを返す。失敗したらnullptr
+const std::vector<int>* BattleScene::LoadAnimFrames(const MoveAnimData& anim)
+{
+	auto it = animFrames_.find(anim.id);
+	if (it != animFrames_.end())
+	{
+		return it->second.empty() ? nullptr : &it->second;
+	}
+
+	std::vector<int> handles(anim.frameCount, -1);
+	const int rows = (anim.frameCount + anim.columns - 1) / anim.columns;
+	if (LoadDivGraph(anim.imagePath.c_str(), anim.frameCount, anim.columns, rows,
+		anim.frameW, anim.frameH, handles.data()) == -1)
+	{
+		handles.clear();	// 読み込み失敗：エフェクトなしで進める
+	}
+
+	std::vector<int>& slot = animFrames_[anim.id];
+	slot = std::move(handles);
+	return slot.empty() ? nullptr : &slot;
+}
+
+void BattleScene::StartMoveAnim(const MoveData& move, int atk)
+{
+	moveAnim_ = {};
+
+	// 相手が使うときは、相手用のエフェクトがあればそちらを使う（なければ自分用で代用）
+	const int animId = (atk == ENEMY && move.enemyAnimId > 0) ? move.enemyAnimId : move.animId;
+	const MoveAnimData* anim = (animId > 0) ? data_->GetMoveAnim(animId) : nullptr;
+	if (anim == nullptr && move.animId > 0)
+	{
+		anim = data_->GetMoveAnim(move.animId);
+	}
+	const std::vector<int>* frames = (anim != nullptr) ? LoadAnimFrames(*anim) : nullptr;
+	if (frames == nullptr)
+	{
+		anim = nullptr;	// 画像が読めないときは、画像エフェクトなしで進める
+	}
+
+	// 前に出るのは攻撃技だけ（変化技は出ない）
+	const bool lunge = (move.power > 0);
+	if (!lunge && anim == nullptr)
+	{
+		return;	// 何も演出しない
+	}
+
+	moveAnim_.active = true;
+	moveAnim_.stage = MoveAnimStage::LUNGE;
+	moveAnim_.anim = anim;
+	moveAnim_.frames = frames;
+	moveAnim_.attacker = atk;
+	moveAnim_.side = (anim != nullptr && anim->pos == AnimPos::USER) ? atk : 1 - atk;
+	moveAnim_.lunge = lunge;
+	moveAnim_.hit = false;
+	moveAnim_.timer = 0;
+}
+
+int BattleScene::MoveAnimStageFrames(void) const
+{
+	switch (moveAnim_.stage)
+	{
+	case MoveAnimStage::LUNGE:
+		return moveAnim_.lunge ? MOVE_LUNGE_FRAMES : 0;
+	case MoveAnimStage::EFFECT:
+		if (moveAnim_.anim == nullptr)
+		{
+			return 0;
+		}
+		return moveAnim_.anim->frameCount * moveAnim_.anim->frameTime * moveAnim_.anim->loops;
+	case MoveAnimStage::HIT:
+		return moveAnim_.hit ? MOVE_HIT_FRAMES : 0;
+	case MoveAnimStage::RETURN:
+		return moveAnim_.lunge ? MOVE_LUNGE_FRAMES : 0;
+	}
+	return 0;
+}
+
+void BattleScene::UpdateMoveAnim(void)
+{
+	if (!moveAnim_.active)
+	{
+		return;
+	}
+
+	moveAnim_.timer++;
+
+	// 今のステージが終わったら次へ（長さ0のステージは飛ばす）
+	while (moveAnim_.timer >= MoveAnimStageFrames())
+	{
+		moveAnim_.timer = 0;
+		switch (moveAnim_.stage)
+		{
+		case MoveAnimStage::LUNGE:
+			moveAnim_.stage = MoveAnimStage::EFFECT;
+			break;
+		case MoveAnimStage::EFFECT:
+			moveAnim_.stage = MoveAnimStage::HIT;
+			break;
+		case MoveAnimStage::HIT:
+			moveAnim_.stage = MoveAnimStage::RETURN;
+			break;
+		case MoveAnimStage::RETURN:
+			moveAnim_ = {};	// 演出おわり
+			return;
+		}
+	}
+}
+
+// モンスター画像のずれと、赤い点滅（技の演出中だけ値が入る）
+void BattleScene::GetMonsterAnimOffset(int side, int& ox, int& oy, bool& red) const
+{
+	ox = 0;
+	oy = 0;
+	red = false;
+	if (!moveAnim_.active)
+	{
+		return;
+	}
+
+	// 技を使った側：前に出て、演出が終わったら戻る（味方は右上へ、敵は左下へ）
+	if (side == moveAnim_.attacker && moveAnim_.lunge)
+	{
+		float rate = 1.0f;
+		if (moveAnim_.stage == MoveAnimStage::LUNGE)
+		{
+			const float t = static_cast<float>(moveAnim_.timer) / MOVE_LUNGE_FRAMES;
+			rate = 1.0f - (1.0f - t) * (1.0f - t);	// 出だしが速く、最後にゆっくり止まる
+		}
+		else if (moveAnim_.stage == MoveAnimStage::RETURN)
+		{
+			rate = 1.0f - static_cast<float>(moveAnim_.timer) / MOVE_LUNGE_FRAMES;
+		}
+		const int dir = (side == PLAYER) ? 1 : -1;
+		ox = static_cast<int>(SX(30) * dir * rate);
+		oy = static_cast<int>(-SY(20) * dir * rate);
+	}
+
+	// 技を受けた側：赤く点滅して、左右に揺れる（だんだん小さくなる）
+	if (side != moveAnim_.attacker && moveAnim_.stage == MoveAnimStage::HIT && moveAnim_.hit)
+	{
+		const int t = moveAnim_.timer;
+		const float decay = 1.0f - static_cast<float>(t) / MOVE_HIT_FRAMES;
+		ox += static_cast<int>(std::sin(t * 1.3f) * SX(10) * decay);
+		red = ((t / 4) % 2 == 0);
+	}
+}
+
+void BattleScene::DrawMoveAnim(void) const
+{
+	// 画像エフェクトを描くのは、エフェクトのステージの間だけ
+	if (!moveAnim_.active || moveAnim_.stage != MoveAnimStage::EFFECT || moveAnim_.anim == nullptr)
+	{
+		return;
+	}
+	const MoveAnimData& a = *moveAnim_.anim;
+	const int index = (moveAnim_.timer / a.frameTime) % static_cast<int>(moveAnim_.frames->size());
+
+	// 表示位置（モンスター画像の中心。Drawの配置を変えたらここも合わせる）
+	int x = SX(320);
+	int y = SY(180);
+	if (a.pos != AnimPos::CENTER)
+	{
+		if (moveAnim_.side == ENEMY)
+		{
+			x = SX(480);
+			y = SY(120);
+		}
+		else
+		{
+			x = SX(170);
+			y = SY(250);
+		}
+	}
+
+	const double scale = a.scalePercent / 100.0 * screenH_ / BASE_H;
+	if (a.additive)
+	{
+		SetDrawBlendMode(DX_BLENDMODE_ADD, 255);
+	}
+	DrawRotaGraph(x, y, scale, 0.0, (*moveAnim_.frames)[index], TRUE);
+	if (a.additive)
+	{
+		SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+	}
+}
+
 int BattleScene::LoadMonsterImage(const std::string& path)
 {
 	if (path.empty())
@@ -1611,6 +1819,13 @@ void BattleScene::UpdateEvolveSelect(void)
 
 void BattleScene::UpdateHpBars(void)
 {
+	// 前に出ている間とエフェクトの再生中は、HPバーを動かさない（食らう演出から減らす）
+	if (moveAnim_.active
+		&& (moveAnim_.stage == MoveAnimStage::LUNGE || moveAnim_.stage == MoveAnimStage::EFFECT))
+	{
+		return;
+	}
+
 	for (auto& c : side_)
 	{
 		if (c.mon == nullptr)
@@ -1653,7 +1868,26 @@ void BattleScene::DrawHpBar(int x, int y, int w, int h, float ratio) const
 
 void BattleScene::DrawMonsterImage(int side, int cx, int bottomY, int size) const
 {
-	DrawImageFit(side_[side].image, cx, bottomY, size);
+	// 技の演出によるずれ（前に出る・揺れる）と、赤い点滅
+	int ox = 0;
+	int oy = 0;
+	bool red = false;
+	GetMonsterAnimOffset(side, ox, oy, red);
+
+	if (red)
+	{
+		SetDrawBright(255, 70, 70);
+	}
+	DrawImageFit(side_[side].image, cx + ox, bottomY + oy, size);
+	if (red)
+	{
+		// 赤を重ねて、暗い色のモンスターでも点滅が分かるようにする
+		SetDrawBlendMode(DX_BLENDMODE_ADD, 110);
+		SetDrawBright(255, 0, 0);
+		DrawImageFit(side_[side].image, cx + ox, bottomY + oy, size);
+		SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+		SetDrawBright(255, 255, 255);
+	}
 }
 
 // 画像の下端中央を(cx, bottomY)に合わせ、縦横の長い方がsizeに収まるよう縮尺して描く
@@ -1704,7 +1938,8 @@ void BattleScene::DrawStatusBox(int side, int x, int y) const
 
 	if (side == PLAYER)
 	{
-		DrawFormatString(x + SX(10), y + SY(44), black, "HP %d / %d", std::max(0, c.mon->currentHp), maxHp);
+		const int dispHp = std::min(maxHp, std::max(0, static_cast<int>(c.dispHp + 0.5f)));
+		DrawFormatString(x + SX(10), y + SY(44), black, "HP %d / %d", dispHp, maxHp);
 		// 経験値バー
 		const float expRatio = MonsterGrowth::GetExpRatio(*data_, *c.mon);
 		DrawBox(x + SX(10), y + SY(70), x + SX(10) + barW, y + SY(76), GetColor(90, 90, 90), TRUE);
