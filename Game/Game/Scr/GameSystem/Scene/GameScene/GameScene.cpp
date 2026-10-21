@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <stdexcept>
 #include "../SceneManager.h"
@@ -317,6 +318,11 @@ void GameScene::Init(void)
 	inventory_.Init();
 
 	trainerData_.Init();
+	eventData_.Init();
+	flags_.Clear();
+	autoFired_.clear();
+	lastEventTileX_ = -1;
+	lastEventTileY_ = -1;
 	defeatedTrainers_.clear();
 	battleTrainerId_ = -1;
 	lastStageId_ = -1;
@@ -354,6 +360,7 @@ void GameScene::Load(void)
 	monsterData_.Load();
 	itemData_.Load();
 	trainerData_.Load();
+	eventData_.Load();
 }
 
 void GameScene::LoadEnd(void)
@@ -414,6 +421,9 @@ void GameScene::Update(void)
 		return;
 	}
 
+	// イベントの出現条件はフラグで変わるので、通行不可マスは毎フレーム作り直す
+	RebuildTrainerBlocks();
+
 	StageManager::GetInstance()->Update();
 
 	player_->Update();
@@ -423,10 +433,21 @@ void GameScene::Update(void)
 	{
 		lastStageId_ = StageManager::GetInstance()->GetCurrentStageId();
 		RebuildTrainerBlocks();
+
+		// 新しいマップに来たので、AUTO イベントと TOUCH の判定をやり直す
+		autoFired_.clear();
+		lastEventTileX_ = -1;
+		lastEventTileY_ = -1;
 	}
 
 	// プレイヤーのワールド座標を渡す
 	Camera2D::GetInstance()->ScreenMove(player_->GetWorldPosX(), player_->GetWorldPosY());
+
+	// マップ上のイベント（手持ちがいなくても動く）
+	if (CheckEvents())
+	{
+		return;
+	}
 
 	// エンカウント判定(指定チップを踏んだ時に確率で遭遇)
 	// 戦えるモンスターがいない／バトル結果の処理待ちのときは判定しない
@@ -457,6 +478,7 @@ void GameScene::Draw(void)
 
 	StageManager::GetInstance()->Draw();
 	DrawTrainers();
+	DrawEvents();
 	player_->Draw();
 
 #ifdef _DEBUG
@@ -518,6 +540,7 @@ void GameScene::Release(void)
 	}
 	trainerImages_.clear();
 	trainerData_.Release();
+	eventData_.Release();
 
 	inventory_.Release();
 	itemData_.Release();
@@ -535,7 +558,7 @@ void GameScene::StartBattle(int monsterId, int level)
 void GameScene::StartStory(const std::string& scriptPath)
 {
 	auto novel = std::make_shared<NovelScene>();
-	novel->Setup(scriptPath, &monsterData_, &monsterParty_, &itemData_, &inventory_);
+	novel->Setup(scriptPath, &monsterData_, &monsterParty_, &itemData_, &inventory_, &flags_);
 	SceneManager::GetInstance()->PushScene(novel);
 }
 
@@ -708,6 +731,7 @@ bool GameScene::SaveGame(void)
 	bool ok = true;
 	ok = monsterParty_.Save("Data/Save/party.csv") && ok;
 	ok = inventory_.Save("Data/Save/inventory.csv") && ok;
+	ok = flags_.Save("Data/Save/flags.csv") && ok;	// ゲーム全体のフラグ
 
 	// ゲームの進行状態（今いるステージとプレイヤーの位置）
 	// いったん別名で書いてから差し替える（書き込み途中で失敗しても元のセーブが壊れない）
@@ -841,6 +865,15 @@ void GameScene::RebuildTrainerBlocks(void)
 			tiles.push_back(std::make_pair(tx, ty));
 		}
 	}
+
+	// 画像つきイベント（話しかける相手など）も、立っているマスは通れない
+	for (const EventSpawn& e : eventData_.GetEvents())
+	{
+		if (e.stageId == stageId && !e.image.empty() && IsEventActive(e))
+		{
+			tiles.push_back(std::make_pair(e.tileX, e.tileY));
+		}
+	}
 	StageManager::GetInstance()->SetExtraBlockTiles(tiles);
 }
 
@@ -921,6 +954,121 @@ void GameScene::DrawTrainers(void)
 			DrawBox(bx - 8, by - 22, bx + 8, by, 0x000000, false);
 			DrawFormatString(bx - 3, by - 19, 0xCC0000, "!");
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// イベント
+// ---------------------------------------------------------------------------
+
+bool GameScene::IsEventActive(const EventSpawn& e) const
+{
+	// 「1回だけ」で、もう終わっているイベントは出ない
+	if (e.once && flags_.IsOn(EventData::DoneFlagName(e.id)))
+	{
+		return false;
+	}
+	return flags_.Check(e.condition);
+}
+
+void GameScene::RunEvent(const EventSpawn& e)
+{
+	// 台本の途中でセーブされても二度と出ないように、始める前にフラグを立てておく
+	if (e.once)
+	{
+		flags_.On(EventData::DoneFlagName(e.id));
+	}
+	if (e.trigger == EventTrigger::AUTO)
+	{
+		autoFired_.insert(e.id);
+	}
+	StartStory(e.script);
+}
+
+bool GameScene::CheckEvents(void)
+{
+	StageManager* sm = StageManager::GetInstance();
+	const int csx = sm->GetChipSizeX();
+	const int csy = sm->GetChipSizeY();
+	if (csx <= 0 || csy <= 0)
+	{
+		return false;
+	}
+
+	// プレイヤーのいるマス（トレーナー判定やエンカウントと同じ座標を使う）
+	const int px = player_->GetWorldPosX() / csx;
+	const int py = player_->GetWorldPosY() / csy;
+	const int stageId = sm->GetCurrentStageId();
+
+	const bool tileChanged = (px != lastEventTileX_ || py != lastEventTileY_);
+	const InputManager* input = InputManager::GetInstance();
+	const bool actionKey = input->IsTrgDown(KEY_INPUT_RETURN)
+		|| input->IsTrgDown(KEY_INPUT_SPACE)
+		|| input->IsTrgDown(KEY_INPUT_Z);
+
+	lastEventTileX_ = px;
+	lastEventTileY_ = py;
+
+	for (const EventSpawn& e : eventData_.GetEvents())
+	{
+		if (e.stageId != stageId || !IsEventActive(e))
+		{
+			continue;
+		}
+
+		bool fire = false;
+		switch (e.trigger)
+		{
+		case EventTrigger::ACTION:
+			// 同じマス、または上下左右の隣で、決定キーを押した
+			fire = actionKey && (std::abs(px - e.tileX) + std::abs(py - e.tileY) <= 1);
+			break;
+		case EventTrigger::TOUCH:
+			fire = tileChanged && px == e.tileX && py == e.tileY;
+			break;
+		case EventTrigger::AUTO:
+			fire = (autoFired_.count(e.id) == 0);
+			break;
+		}
+
+		if (fire)
+		{
+			RunEvent(e);
+			return true;
+		}
+	}
+	return false;
+}
+
+void GameScene::DrawEvents(void)
+{
+	StageManager* sm = StageManager::GetInstance();
+	const int csx = sm->GetChipSizeX();
+	const int csy = sm->GetChipSizeY();
+	const int stageId = sm->GetCurrentStageId();
+
+	for (const EventSpawn& e : eventData_.GetEvents())
+	{
+		if (e.stageId != stageId || e.image.empty() || !IsEventActive(e))
+		{
+			continue;
+		}
+
+		// 立ち絵（下向き）を出す。なければ、ある向きのものを使う
+		const TrainerSprite& sprite = GetTrainerSprite(e.image);
+		int img = PickFrame(sprite.frames[static_cast<int>(TrainerDir::DOWN)], false, 0);
+		for (size_t d = 0; d < sprite.frames.size() && img < 0; d++)
+		{
+			img = PickFrame(sprite.frames[d], false, 0);
+		}
+		if (img < 0)
+		{
+			continue;
+		}
+
+		const int x = Camera2D::GetInstance()->WorldToScreenX(e.tileX * csx);
+		const int y = Camera2D::GetInstance()->WorldToScreenY(e.tileY * csy);
+		DrawExtendGraph(x, y, x + csx, y + csy, img, true);
 	}
 }
 

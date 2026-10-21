@@ -5,6 +5,8 @@
 #include "../../../AppSystem/InputManager/InputManager.h"
 #include "../../Object/Monster/MonsterData.h"
 #include "../../Object/Monster/MonsterParty.h"
+#include "../../Object/Item/Inventory.h"
+#include "../../Flag/GameFlags.h"
 
 NovelScene::NovelScene(void)
 {
@@ -15,13 +17,14 @@ NovelScene::~NovelScene(void)
 }
 
 void NovelScene::Setup(const std::string& scriptPath, const MonsterData* data, MonsterParty* party,
-	const ItemData* items, Inventory* inventory)
+	const ItemData* items, Inventory* inventory, GameFlags* flags)
 {
 	scriptPath_ = scriptPath;
 	data_ = data;
 	party_ = party;
 	items_ = items;
 	inventory_ = inventory;
+	flags_ = flags;
 }
 
 void NovelScene::Init(void)
@@ -30,6 +33,15 @@ void NovelScene::Init(void)
 
 	// 文字コードは DxLib の設定に合わせる（スクリプトファイルもその文字コードで保存すること）
 	novel_.cfg.utf8 = (GetUseCharCodeFormat() == DX_CHARCODEFORMAT_UTF8);
+
+	// キーボード操作のみ（マウスは使わない）
+	novel_.cfg.useMouse = false;
+
+	// ゲーム全体のフラグを、台本の $名前 から使えるようにする
+	if (flags_ != nullptr)
+	{
+		novel_.SetGlobalFlags(&flags_->Map());
+	}
 
 	// 素材やラベルが見つからないときの警告を、出力ウィンドウに出す
 	novel_.onWarning = [](const std::string& m)
@@ -115,6 +127,22 @@ void NovelScene::Release(void)
 
 bool NovelScene::OnCommand(const std::string& name, const std::vector<std::string>& args)
 {
+	// @item 道具番号 個数  （バッグだけを使うので、手持ちがなくても動く）
+	if (name == "item")
+	{
+		if (args.empty() || inventory_ == nullptr)
+		{
+			return false;
+		}
+		const int itemId = std::atoi(args[0].c_str());
+		const int count = (args.size() > 1) ? std::atoi(args[1].c_str()) : 1;
+		if (count >= 0)
+		{
+			return inventory_->Add(itemId, count);
+		}
+		return inventory_->Remove(itemId, -count);
+	}
+
 	if (data_ == nullptr || party_ == nullptr)
 	{
 		return false;

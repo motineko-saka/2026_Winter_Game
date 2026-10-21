@@ -12,6 +12,8 @@
 #include "../../Object/Item/ItemData.h"
 #include "../../Object/Item/Inventory.h"
 #include "../../Object/NPC/TrainerData.h"
+#include "../../Flag/GameFlags.h"
+#include "../../Event/EventData.h"
 
 class Player;
 class BattleScene;
@@ -49,9 +51,15 @@ private:
 	void GetTrainerTile(const TrainerSpawn& spawn, int& tileX, int& tileY) const;	// トレーナーが今立っているマス
 	void StartTrainerBattle(const TrainerSpawn& spawn);		// トレーナー戦を始める
 	bool CheckTrainerSight(void);							// プレイヤーがトレーナーに見つかったか（見つかったら戦闘開始）
-	void RebuildTrainerBlocks(void);						// トレーナーが立っているマスを通行不可にする
+	void RebuildTrainerBlocks(void);						// トレーナーと、画像つきイベントが立っているマスを通行不可にする
 	void DrawTrainers(void);								// マップ上のトレーナーを描く
 	const TrainerSprite& GetTrainerSprite(const std::string& spec);	// 画像の指定から、向きごとの画像を読み込む（同じ指定はキャッシュを返す）
+
+	// ---------- イベント（Data/CSVData/Event.csv） ----------
+	bool CheckEvents(void);									// きっかけを満たしたイベントがあれば台本を始める（始めたらtrue）
+	bool IsEventActive(const EventSpawn& e) const;			// 出現条件を満たしていて、まだ終わっていないか
+	void RunEvent(const EventSpawn& e);						// イベントの台本を始める
+	void DrawEvents(void);									// 画像つきイベントを描く
 
 	bool SaveGame(void);						// セーブする（成功したらtrue）
 	void StartBattle(int monsterId, int level);	// バトルシーンを積む
@@ -120,6 +128,15 @@ private:
 
 	// 所持金（トレーナーに勝つと増える）
 	int money_ = 0;
+
+	// ゲーム全体のフラグ（台本の $名前、Event.csv の条件、セーブ対象）
+	GameFlags flags_;
+
+	// マップ上のイベント
+	EventData eventData_;
+	std::set<int> autoFired_;			// このマップ訪問中に、もう動いた AUTO イベントのID
+	int lastEventTileX_ = -1;			// 前回調べたときのプレイヤーのマス（TOUCH の判定用）
+	int lastEventTileY_ = -1;
 
 	// 全滅演出
 	DefeatPhase defeatPhase_ = DefeatPhase::NONE;

@@ -1,3 +1,11 @@
 #エフェクトID,パス,1コマ幅,1コマ高さ,コマ数,横のコマ数,一コマのフレーム数,拡大率,繰り返し,合成位置,
 1,Data/Image/Effect/taitari_2.png,240,240,10,10,5,100,1,NORMAL,TARGET
+2,Data/Image/Effect/taitari_1.png,240,240,10,10,5,100,1,NORMAL,TARGET
+3,Data/Image/Effect/surassyu_1.png,240,240,9,9,5,100,1,NORMAL,TARGET
+4,Data/Image/Effect/surassyu_2.png,240,240,9,9,5,100,1,NORMAL,TARGET
 5,Data/Image/Effect/faia_1.png,240,240,8,8,5,100,1,NORMAL,TARGET
+6,Data/Image/Effect/faia_2.png,240,240,8,8,5,100,1,NORMAL,TARGET
+7,Data/Image/Effect/water_1.png,240,240,8,8,5,100,1,NORMAL,TARGET
+8,Data/Image/Effect/water_2.png,240,240,8,8,5,100,1,NORMAL,TARGET
+9,Data/Image/Effect/wind_1.png,240,240,8,8,5,100,1,NORMAL,TARGET
+10,Data/Image/Effect/wind_2.png,240,240,8,8,5,100,1,NORMAL,TARGET

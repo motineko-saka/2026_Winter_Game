@@ -1,0 +1,12 @@
+#ID,StageID,TileX,TileY,Trigger(ACTION/TOUCH/AUTO),Condition,Script,Once(0/1),Image
+#
+# ID        : 1,2,3... (unique)
+# Trigger   : ACTION = press Enter/Space/Z on or next to the tile / TOUCH = step on the tile / AUTO = when entering the map
+# Condition : flag conditions joined with &   e.g.  got_starter & !found_stone & gold>=100   (empty = always)
+# Once      : 1 = runs only once (flag event_<ID>_done is set)
+# Image     : optional. same format as Trainer.csv image column. with an image the event is drawn and blocks the tile
+#
+# AUTO ... runs once per map visit while its condition is true
+1,0,4,9,AUTO,,Data/Story/prologue.txt,1,
+2,0,6,9,ACTION,,Data/Story/doctor.txt,0,
+3,0,8,9,TOUCH,got_starter&!found_stone,Data/Story/stone.txt,1,

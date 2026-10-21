@@ -50,6 +50,9 @@ namespace Novel {
 		int bgmVolume = 100, seVolume = 100;
 
 		int backlogMax = 200;
+
+		// false: mouse (click / wheel / hover) is ignored. Keyboard only.
+		bool useMouse = false;
 	};
 
 	// ---------------------------------------------------------------------------
@@ -101,9 +104,13 @@ namespace Novel {
 			if (UpdateBacklog(in)) return true;
 
 			if (in.toggleAuto) auto_ = !auto_;
-			if (in.backlog || in.wheel > 0) { OpenBacklog(); return true; }
 
-			const bool advance = in.ok || in.click;
+			// While a page is showing: Down = next page, Up = open backlog.
+			// (While choosing, Up/Down move the cursor instead.)
+			const bool textState = (state_ == State::Typing || state_ == State::WaitClick);
+			if (in.backlog || in.wheel > 0 || (textState && in.up)) { OpenBacklog(); return true; }
+
+			const bool advance = in.ok || in.click || (textState && in.down);
 			switch (state_) {
 			case State::Running: RunUntilBlock(); break;
 
@@ -154,9 +161,16 @@ namespace Novel {
 
 		void SetCommandHandler(CommandHandler h) { handler_ = std::move(h); }
 
-		int  GetVar(const std::string& n) const { auto it = vars_.find(n); return it == vars_.end() ? 0 : it->second; }
-		void SetVar(const std::string& n, int v) { vars_[n] = v; }
+		// Variables.
+		//   "name"  : local to this script (cleared every time a script is loaded)
+		//   "$name" : global flag shared by the whole game (see SetGlobalFlags). Kept between scripts.
+		int  GetVar(const std::string& n) const { return ReadVar(n); }
+		void SetVar(const std::string& n, int v) { WriteVar(n, v); }
 		const std::map<std::string, int>& Vars() const { return vars_; }
+
+		// Give the engine the game-wide flag table. Keys are stored WITHOUT the leading '$'.
+		// The table must outlive the engine. Pass nullptr to go back to local-only.
+		void SetGlobalFlags(std::map<std::string, int>* g) { globals_ = g; }
 
 		void Wait(int ms) { waitMs_ = ms; state_ = State::Wait; }
 
@@ -218,9 +232,10 @@ namespace Novel {
 		enum class State { Running, Typing, WaitClick, Wait, Choice, Finished };
 		enum class LineType { Text, Cmd, Label, Speaker };
 		struct Line {
-			LineType type;
+			LineType type = LineType::Text;
 			std::string text;
 			std::vector<std::string> args;
+			int target = -1;   // block @if: line to go to when false / @else: line to go to (the @endif)
 		};
 		struct Chara { std::string id, file, pos; int handle; };
 		struct Choice { std::string text, label; };
@@ -235,7 +250,11 @@ namespace Novel {
 
 			std::istringstream in(src);
 			std::string raw; bool first = true;
+			struct Open { int ifIdx; int elseIdx; };
+			std::vector<Open> blocks;   // open block @if (for matching @else / @endif)
+			int lineNo = 0;
 			while (std::getline(in, raw)) {
+				++lineNo;
 				if (first && raw.compare(0, 3, "\xEF\xBB\xBF") == 0) raw.erase(0, 3);  // BOM
 				first = false;
 				while (!raw.empty() && (raw.back() == '\r' || raw.back() == ' ' || raw.back() == '\t')) raw.pop_back();
@@ -246,6 +265,24 @@ namespace Novel {
 					auto t = Tokenize(raw.substr(1));
 					if (t.empty()) continue;
 					l.type = LineType::Cmd; l.text = Lower(t[0]); t.erase(t.begin()); l.args = std::move(t);
+
+					// Match block @if / @else / @endif
+					const int idx = (int)lines_.size();
+					if (l.text == "if" && IsBlockIf(l.args)) {
+						blocks.push_back({ idx, -1 });
+					}
+					else if (l.text == "else") {
+						if (blocks.empty() || blocks.back().elseIdx >= 0) Warn("line " + std::to_string(lineNo) + ": @else without @if");
+						else blocks.back().elseIdx = idx;
+					}
+					else if (l.text == "endif") {
+						if (blocks.empty()) Warn("line " + std::to_string(lineNo) + ": @endif without @if");
+						else {
+							const Open o = blocks.back(); blocks.pop_back();
+							if (o.elseIdx >= 0) { lines_[o.ifIdx].target = o.elseIdx + 1; lines_[o.elseIdx].target = idx; }
+							else lines_[o.ifIdx].target = idx;
+						}
+					}
 				}
 				else if (raw[0] == '*') {
 					l.type = LineType::Label; l.text = Trim(raw.substr(1));
@@ -259,8 +296,16 @@ namespace Novel {
 				}
 				lines_.push_back(std::move(l));
 			}
+			if (!blocks.empty()) Warn("@if without @endif (opened at line index " + std::to_string(blocks.back().ifIdx) + ")");
 			return true;
 		}
+
+		// @if forms:
+		//   @if flag                    (1 arg)  block, true when flag != 0     ("!flag" = true when 0)
+		//   @if a op b                  (3 args) block
+		//   @if flag label              (2 args) jump to label when flag != 0
+		//   @if a op b label            (4 args) jump to label when true
+		static bool IsBlockIf(const std::vector<std::string>& a) { return a.size() == 1 || a.size() == 3; }
 
 		static std::vector<std::string> Tokenize(const std::string& s) {
 			std::vector<std::string> out; std::string cur; bool q = false, has = false;
@@ -311,13 +356,50 @@ namespace Novel {
 			state_ = State::Typing;
 		}
 
+		// Number literal, or the value of a variable ("name" local / "$name" global).
 		bool Truthy(const std::string& tok, int& out) const {
 			char* end = nullptr;
 			long v = std::strtol(tok.c_str(), &end, 10);
 			if (end && *end == '\0' && !tok.empty()) { out = (int)v; return true; }
-			out = GetVar(tok); return false;
+			out = ReadVar(tok); return false;
 		}
 		int Val(const std::string& tok) const { int v; Truthy(tok, v); return v; }
+
+		int ReadVar(const std::string& n) const {
+			if (!n.empty() && n[0] == '$' && globals_) {
+				auto it = globals_->find(n.substr(1));
+				return it == globals_->end() ? 0 : it->second;
+			}
+			auto it = vars_.find(n);
+			return it == vars_.end() ? 0 : it->second;
+		}
+		void WriteVar(const std::string& n, int v) {
+			if (!n.empty() && n[0] == '$' && globals_) (*globals_)[n.substr(1)] = v;
+			else vars_[n] = v;
+		}
+
+		// Evaluate the condition part of @if (see IsBlockIf). Returns false (and warns) if it is malformed.
+		bool EvalCond(const std::vector<std::string>& a) {
+			if (a.size() == 1 || a.size() == 2) {
+				std::string t = a[0]; bool neg = false;
+				if (!t.empty() && t[0] == '!') { neg = true; t.erase(0, 1); }
+				const bool r = Val(t) != 0;
+				return neg ? !r : r;
+			}
+			if (a.size() >= 3) {
+				const int lhs = Val(a[0]), rhs = Val(a[2]); const std::string& op = a[1];
+				if (op == "==") return lhs == rhs;
+				if (op == "!=") return lhs != rhs;
+				if (op == ">=") return lhs >= rhs;
+				if (op == "<=") return lhs <= rhs;
+				if (op == ">")  return lhs > rhs;
+				if (op == "<")  return lhs < rhs;
+				Warn("@if: unknown operator '" + op + "'");
+				return false;
+			}
+			Warn("@if: missing condition");
+			return false;
+		}
 
 		void Exec(const Line& l, int curIdx) {
 			const std::string& c = l.text; const auto& a = l.args;
@@ -335,17 +417,32 @@ namespace Novel {
 			else if (c == "end") { state_ = State::Finished; }
 			else if (c == "set") {
 				const std::string name = arg(0), op = arg(1); const int v = Val(arg(2));
-				if (op == "=") vars_[name] = v;
-				else if (op == "+=") vars_[name] += v;
-				else if (op == "-=") vars_[name] -= v;
+				const int cur = ReadVar(name);
+				if (op == "=") WriteVar(name, v);
+				else if (op == "+=") WriteVar(name, cur + v);
+				else if (op == "-=") WriteVar(name, cur - v);
 				else Warn("@set: unknown operator '" + op + "'");
 			}
-			else if (c == "if") {
-				const int lhs = Val(arg(0)), rhs = Val(arg(2)); const std::string op = arg(1);
-				bool r = op == "==" ? lhs == rhs : op == "!=" ? lhs != rhs : op == ">=" ? lhs >= rhs
-					: op == "<=" ? lhs <= rhs : op == ">" ? lhs > rhs : op == "<" ? lhs < rhs : false;
-				if (r) Jump(arg(3));
+			// @on name / @off name : switch a global flag ON(1) / OFF(0)   ("name" or "$name" both work)
+			else if (c == "on" || c == "off") {
+				std::string name = arg(0);
+				if (name.empty()) { Warn("@" + c + ": no flag name"); return; }
+				if (name[0] != '$') name = "$" + name;
+				WriteVar(name, c == "on" ? 1 : 0);
 			}
+			else if (c == "if") {
+				if (IsBlockIf(a)) {
+					if (!EvalCond(a)) {
+						if (l.target < 0) { Warn("@if without @endif"); pc_ = (int)lines_.size(); }
+						else pc_ = l.target;
+					}
+				}
+				else if (EvalCond(a)) Jump(a.size() == 2 ? a[1] : arg(3));
+			}
+			else if (c == "else") {   // reached by running through the true branch: skip the false branch
+				if (l.target >= 0) pc_ = l.target;
+			}
+			else if (c == "endif") {}
 			else if (c == "choice") {
 				choices_.clear();
 				for (size_t i = 0; i + 1 < a.size(); i += 2) choices_.push_back({ a[i], a[i + 1] });
@@ -448,12 +545,24 @@ namespace Novel {
 			const bool kU = CheckHitKey(KEY_INPUT_UP) != 0, kD = CheckHitKey(KEY_INPUT_DOWN) != 0;
 			const bool kB = CheckHitKey(KEY_INPUT_BACK) != 0;
 
-			in.ok = kOk && !pOk_;   in.click = mL && !pL_;   in.cancel = (mR && !pR_) || (kB && !pB_);
+			// First call: treat keys that are already held (e.g. the Enter that opened this scene)
+			// as "already pressed", so they do not count as a new press.
+			if (!inputPrimed_) {
+				pOk_ = kOk; pL_ = mL; pR_ = mR; pA_ = kA; pLog_ = kL; pU_ = kU; pD_ = kD; pB_ = kB;
+				inputPrimed_ = true;
+			}
+
+			in.ok = kOk && !pOk_;
+			in.cancel = kB && !pB_;
 			in.toggleAuto = kA && !pA_;  in.backlog = kL && !pLog_;
 			in.up = kU && !pU_;  in.down = kD && !pD_;
 			in.skip = CheckHitKey(KEY_INPUT_LCONTROL) || CheckHitKey(KEY_INPUT_RCONTROL);
-			in.wheel = GetMouseWheelRotVol();
-			GetMousePoint(&in.mouseX, &in.mouseY);
+			if (cfg.useMouse) {
+				in.click = mL && !pL_;
+				in.cancel = in.cancel || (mR && !pR_);
+				in.wheel = GetMouseWheelRotVol();
+				GetMousePoint(&in.mouseX, &in.mouseY);
+			}
 			pOk_ = kOk; pL_ = mL; pR_ = mR; pA_ = kA; pLog_ = kL; pU_ = kU; pD_ = kD; pB_ = kB;
 
 			const int now = GetNowCount();
@@ -462,6 +571,7 @@ namespace Novel {
 			return in;
 		}
 		bool pOk_ = false, pL_ = false, pR_ = false, pA_ = false, pLog_ = false, pU_ = false, pD_ = false, pB_ = false;
+		bool inputPrimed_ = false;
 		int lastMs_ = 0;
 
 		void OpenBacklog() { if (backlog_.empty()) return; backlogOpen_ = true; backlogScroll_ = 0; }
@@ -584,6 +694,7 @@ namespace Novel {
 
 		std::vector<Line> lines_;
 		std::map<std::string, int> labels_, vars_;
+		std::map<std::string, int>* globals_ = nullptr;   // game-wide flags ("$name"), not owned
 		std::string scriptPath_;
 		int pc_ = 0, pageLine_ = 0, choiceLine_ = 0;
 		State state_ = State::Running;
