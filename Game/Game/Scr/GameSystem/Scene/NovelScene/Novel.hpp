@@ -542,7 +542,8 @@ namespace Novel {
 			const int  mb = GetMouseInput();
 			const bool mL = (mb & MOUSE_INPUT_LEFT) != 0, mR = (mb & MOUSE_INPUT_RIGHT) != 0;
 			const bool kA = CheckHitKey(KEY_INPUT_A) != 0, kL = CheckHitKey(KEY_INPUT_L) != 0;
-			const bool kU = CheckHitKey(KEY_INPUT_UP) != 0, kD = CheckHitKey(KEY_INPUT_DOWN) != 0;
+			const bool kU = CheckHitKey(KEY_INPUT_UP) != 0 || CheckHitKey(KEY_INPUT_W) != 0;
+			const bool kD = CheckHitKey(KEY_INPUT_DOWN) != 0 || CheckHitKey(KEY_INPUT_S) != 0;
 			const bool kB = CheckHitKey(KEY_INPUT_BACK) != 0;
 
 			// First call: treat keys that are already held (e.g. the Enter that opened this scene)

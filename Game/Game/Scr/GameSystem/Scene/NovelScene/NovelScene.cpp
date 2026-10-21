@@ -182,6 +182,13 @@ bool NovelScene::OnCommand(const std::string& name, const std::vector<std::strin
 		battle_ = std::make_shared<BattleScene>();
 		battle_->Setup(data_, party_, std::atoi(args[0].c_str()), std::atoi(args[1].c_str()));
 		battle_->SetItems(items_, inventory_);
+		battle_->SetPlayerImages({
+		"Data/Image/Player/1.png",
+		"Data/Image/Player/2.png",
+		"Data/Image/Player/3.png",
+		"Data/Image/Player/4.png",
+		"Data/Image/Player/5.png",
+			});
 		SceneManager::GetInstance()->PushScene(battle_);
 
 		// バトルが終わるまでノベルを止める（再開は Update 側）

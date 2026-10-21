@@ -142,6 +142,7 @@
     <ClCompile Include="Scr\GameSystem\Object\Item\Inventory.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Item\ItemData.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Item\ItemUse.cpp" />
+    <ClCompile Include="Scr\GameSystem\Object\Monster\BallEffectData.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\Monsterbox.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterData.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Monster\MonsterGrowth.cpp" />
@@ -180,6 +181,7 @@
     <ClInclude Include="Scr\GameSystem\Object\Item\Inventory.h" />
     <ClInclude Include="Scr\GameSystem\Object\Item\ItemData.h" />
     <ClInclude Include="Scr\GameSystem\Object\Item\ItemUse.h" />
+    <ClInclude Include="Scr\GameSystem\Object\Monster\BallEffectData.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\Monsterbox.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterData.h" />
     <ClInclude Include="Scr\GameSystem\Object\Monster\MonsterGrowth.h" />

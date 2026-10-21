@@ -15,6 +15,27 @@
 
 namespace
 {
+	// ---------- 入力の共通化（キー割り当てをここで一元管理） ----------
+	bool IsConfirm(InputManager* in)	// 決定：Enter / Space
+	{
+		return in->IsTrgDown(KEY_INPUT_RETURN) || in->IsTrgDown(KEY_INPUT_SPACE);
+	}
+
+	bool IsCancel(InputManager* in)		// 戻る・キャンセル：BackSpace / Esc
+	{
+		return in->IsTrgDown(KEY_INPUT_BACK) || in->IsTrgDown(KEY_INPUT_ESCAPE);
+	}
+
+	bool IsUp(InputManager* in)			// 上：↑ / W
+	{
+		return in->IsTrgDown(KEY_INPUT_UP) || in->IsTrgDown(KEY_INPUT_W);
+	}
+
+	bool IsDown(InputManager* in)		// 下：↓ / S
+	{
+		return in->IsTrgDown(KEY_INPUT_DOWN) || in->IsTrgDown(KEY_INPUT_S);
+	}
+
 	const int RANK_MAX = 6;
 
 	// ランク補正の倍率（+1で1.5倍、-1で約0.67倍…）
@@ -70,8 +91,19 @@ void BattleScene::SetItems(const ItemData* items, Inventory* inventory)
 	inventory_ = inventory;
 }
 
+void BattleScene::SetPlayerSprite(const std::string& path, int frames, int columns, int frameW, int frameH)
+{
+	playerSpritePath_ = path;
+	playerSpriteFrames_ = frames;
+	playerSpriteColumns_ = columns;
+	playerSpriteW_ = frameW;
+	playerSpriteH_ = frameH;
+}
+
 void BattleScene::Init(void)
 {
+	sendOut_ = {};
+	hidden_ = { false, false };
 	steps_.clear();
 	learnQueue_.clear();
 	evolveQueue_.clear();
@@ -124,6 +156,13 @@ void BattleScene::Init(void)
 	SetCombatant(PLAYER, party_->Get(first));
 	SetCombatant(ENEMY, &enemy_);
 
+	// ボール演出の設定を外部ファイルから読む（無ければ仮のボールで進む）
+	ballData_.Load(BALL_EFFECT_CSV);
+
+	// ボールから出てくるまでは姿を隠す（野生の敵は最初から見えている）
+	hidden_[PLAYER] = true;
+	hidden_[ENEMY] = (trainer_ != nullptr);
+
 	// 開始メッセージ
 	if (trainer_ != nullptr)
 	{
@@ -132,13 +171,21 @@ void BattleScene::Init(void)
 		{
 			PushSay(trainer_->name + "「" + trainer_->introMessage + "」");
 		}
-		Push([this]() { Say(trainer_->name + "は " + enemy_.nickname + "を くりだした！"); });
+		Push([this]()
+			{
+				Say(trainer_->name + "は " + enemy_.nickname + "を くりだした！");
+				StartSendOut(ENEMY);
+			});
 	}
 	else
 	{
 		Say(Name(ENEMY) + "が あらわれた！");
 	}
-	Push([this]() { Say("ゆけっ！ " + side_[PLAYER].mon->nickname + "！"); });
+	Push([this]()
+		{
+			Say("ゆけっ！ " + side_[PLAYER].mon->nickname + "！");
+			StartSendOut(PLAYER);
+		});
 	phase_ = Phase::MESSAGE;
 }
 
@@ -153,6 +200,7 @@ void BattleScene::LoadEnd(void)
 void BattleScene::Update(void)
 {
 	UpdateMoveAnim();
+	UpdateSendOut();
 	UpdateHpBars();
 
 	// ポーズ画面を積む
@@ -165,8 +213,8 @@ void BattleScene::Update(void)
 	switch (phase_)
 	{
 	case Phase::MESSAGE:
-		// 技の演出中はEnterを受け付けない（演出が終わってから次へ進める）
-		if (!moveAnim_.active && InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
+		// 技・ボールの演出中はEnterを受け付けない（演出が終わってから次へ進める）
+		if (!moveAnim_.active && !sendOut_.active && IsConfirm(InputManager::GetInstance()))
 		{
 			RunNextStep();
 		}
@@ -196,7 +244,7 @@ void BattleScene::Update(void)
 		UpdateEvolveSelect();
 		break;
 	case Phase::END:
-		if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_RETURN))
+		if (IsConfirm(InputManager::GetInstance()))
 		{
 			// バトルが完全に終わったあとで進化する（進化がなければそのままゲーム画面に戻る）
 			evolveBegun_ = true;
@@ -225,16 +273,32 @@ void BattleScene::Draw(void)
 	}
 
 	// モンスター画像（敵＝右上、味方＝左下）
-	if (!enemyInBall_)
+	// ボールから出てくるまでは描かない（出てくる最中は DrawSendOut が描く）
+	for (int side : { ENEMY, PLAYER })
 	{
-		DrawMonsterImage(ENEMY, SX(480), SY(210), SY(180));
+		if (side == ENEMY && enemyInBall_)
+		{
+			continue;
+		}
+		if (!hidden_[side])
+		{
+			int cx = 0, bottom = 0, size = 0;
+			GetMonsterLayout(side, cx, bottom, size);
+			DrawMonsterImage(side, cx, bottom, size);
+		}
 	}
-	DrawMonsterImage(PLAYER, SX(170), SY(350), SY(200));
+	DrawSendOut();	// ボールの演出
 	DrawMoveAnim();	// 技エフェクト（ステータス枠より下に描く）
 
 	// 敵（左上）とプレイヤー（右下）の情報
-	DrawStatusBox(ENEMY, SX(30), SY(30));
-	DrawStatusBox(PLAYER, SX(370), SY(250));
+	if (!hidden_[ENEMY])
+	{
+		DrawStatusBox(ENEMY, SX(30), SY(30));
+	}
+	if (!hidden_[PLAYER])
+	{
+		DrawStatusBox(PLAYER, SX(370), SY(250));
+	}
 
 	switch (phase_)
 	{
@@ -289,6 +353,26 @@ void BattleScene::Release(void)
 		}
 	}
 	animFrames_.clear();
+	for (auto& pair : ballFrames_)
+	{
+		for (int h : pair.second)
+		{
+			if (h != -1)
+			{
+				DeleteGraph(h);
+			}
+		}
+	}
+	ballFrames_.clear();
+	for (int h : playerSprite_)
+	{
+		if (h != -1)
+		{
+			DeleteGraph(h);
+		}
+	}
+	playerSprite_.clear();
+	sendOut_ = {};
 	moveAnim_ = {};
 	images_.clear();
 	steps_.clear();
@@ -1261,6 +1345,7 @@ void BattleScene::SwitchPlayer(int partyIndex)
 	activeIndex_ = partyIndex;
 	SetCombatant(PLAYER, party_->Get(partyIndex));
 	Say("ゆけっ！ " + side_[PLAYER].mon->nickname + "！");
+	StartSendOut(PLAYER);
 }
 
 void BattleScene::SetCombatant(int side, MonsterInstance* mon)
@@ -1493,11 +1578,11 @@ void BattleScene::MoveCursor(int count)
 		return;
 	}
 	auto* input = InputManager::GetInstance();
-	if (input->IsTrgDown(KEY_INPUT_UP))
+	if (IsUp(input))
 	{
 		cursor_ = (cursor_ + count - 1) % count;
 	}
-	if (input->IsTrgDown(KEY_INPUT_DOWN))
+	if (IsDown(input))
 	{
 		cursor_ = (cursor_ + 1) % count;
 	}
@@ -1520,7 +1605,7 @@ void BattleScene::UpdateCommand(void)
 	auto* input = InputManager::GetInstance();
 	MoveCursor(4);
 
-	if (!input->IsTrgDown(KEY_INPUT_RETURN))
+	if (!IsConfirm(input))
 	{
 		return;
 	}
@@ -1569,13 +1654,13 @@ void BattleScene::UpdateMoveSelect(void)
 	auto* input = InputManager::GetInstance();
 	MoveCursor(4);
 
-	if (input->IsTrgDown(KEY_INPUT_BACK))
+	if (IsCancel(input))
 	{
 		phase_ = Phase::COMMAND;
 		cursor_ = 0;
 		return;
 	}
-	if (input->IsTrgDown(KEY_INPUT_RETURN))
+	if (IsConfirm(input))
 	{
 		const MoveSlot& m = side_[PLAYER].mon->moves[cursor_];
 		if (m.moveId != MonsterParty::MOVE_NONE && m.currentPp > 0)
@@ -1591,13 +1676,13 @@ void BattleScene::UpdatePartySelect(void)
 	MoveCursor(party_->GetCount());
 
 	// ひんしで強制的に選ぶとき以外は戻れる
-	if (!needSwitch_ && input->IsTrgDown(KEY_INPUT_BACK))
+	if (!needSwitch_ && IsCancel(input))
 	{
 		phase_ = Phase::COMMAND;
 		cursor_ = 1;
 		return;
 	}
-	if (!input->IsTrgDown(KEY_INPUT_RETURN))
+	if (!IsConfirm(input))
 	{
 		return;
 	}
@@ -1629,7 +1714,14 @@ void BattleScene::UpdateLearnSelect(void)
 	auto* input = InputManager::GetInstance();
 	MoveCursor(5);	// 0〜3：忘れる技、4：あきらめる
 
-	if (!input->IsTrgDown(KEY_INPUT_RETURN))
+	// 戻る／Escなら「あきらめる」にカーソルを移す（確定はしない）
+	if (IsCancel(input))
+	{
+		cursor_ = 4;
+		return;
+	}
+
+	if (!IsConfirm(input))
 	{
 		return;
 	}
@@ -1668,13 +1760,13 @@ void BattleScene::UpdateBag(void)
 	auto* input = InputManager::GetInstance();
 	MoveCursor(static_cast<int>(bagList_.size()));
 
-	if (input->IsTrgDown(KEY_INPUT_BACK))
+	if (IsCancel(input))
 	{
 		phase_ = Phase::COMMAND;
 		cursor_ = 2;
 		return;
 	}
-	if (!input->IsTrgDown(KEY_INPUT_RETURN) || bagList_.empty())
+	if (!IsConfirm(input) || bagList_.empty())
 	{
 		return;
 	}
@@ -1726,7 +1818,7 @@ void BattleScene::UpdateItemTarget(void)
 	auto* input = InputManager::GetInstance();
 	MoveCursor(party_->GetCount());
 
-	if (input->IsTrgDown(KEY_INPUT_BACK))
+	if (IsCancel(input))
 	{
 		// バッグに戻る（さっき選んでいたアイテムにカーソルを合わせる）
 		phase_ = Phase::BAG;
@@ -1734,7 +1826,7 @@ void BattleScene::UpdateItemTarget(void)
 		cursor_ = (it != bagList_.end()) ? static_cast<int>(it - bagList_.begin()) : 0;
 		return;
 	}
-	if (!input->IsTrgDown(KEY_INPUT_RETURN))
+	if (!IsConfirm(input))
 	{
 		return;
 	}
@@ -1767,7 +1859,7 @@ void BattleScene::UpdateEvolve(void)
 	MonsterInstance* mon = evolveCur_.mon;
 
 	// BACKでキャンセル
-	if (input->IsTrgDown(KEY_INPUT_BACK))
+	if (IsCancel(input))
 	{
 		CancelEvolve();
 		return;
@@ -1804,12 +1896,12 @@ void BattleScene::UpdateEvolveSelect(void)
 	const int count = static_cast<int>(evolveCur_.candidates.size());
 	MoveCursor(count);
 
-	if (input->IsTrgDown(KEY_INPUT_BACK))
+	if (IsCancel(input))
 	{
 		CancelEvolve();
 		return;
 	}
-	if (input->IsTrgDown(KEY_INPUT_RETURN))
+	if (IsConfirm(input))
 	{
 		evolveCur_.toId = evolveCur_.candidates[cursor_];
 		evolveNewImg_ = evolveCandImgs_[cursor_];
@@ -2228,6 +2320,7 @@ void BattleScene::SendNextEnemy(void)
 	SetCombatant(ENEMY, &enemy_);
 
 	Say(trainer_->name + "は " + enemy_.nickname + "を くりだした！");
+	StartSendOut(ENEMY);
 }
 
 void BattleScene::OnTrainerDefeated(void)
@@ -2241,5 +2334,309 @@ void BattleScene::OnTrainerDefeated(void)
 	{
 		prize_ = trainer_->prize;
 		PushSay("しょうきんとして " + std::to_string(prize_) + "円を てにいれた！");
+	}
+}
+
+// =============================================================
+// モンスターを出す演出（ボールを投げる → バウンド → 開く → 出てくる）
+// ボールごとの見た目・エフェクトは BallEffect.csv で変えられる
+// =============================================================
+
+// モンスター画像の配置（Draw と DrawSendOut で共通。ここを変えれば両方に反映される）
+void BattleScene::GetMonsterLayout(int side, int& cx, int& bottomY, int& size) const
+{
+	if (side == ENEMY)
+	{
+		cx = SX(480);
+		bottomY = SY(210);
+		size = SY(180);
+	}
+	else
+	{
+		cx = SX(170);
+		bottomY = SY(350);
+		size = SY(200);
+	}
+}
+
+// ボールが開いたときのエフェクトシートを分割して読み込む。画像なし・失敗ならnullptr
+const std::vector<int>* BattleScene::LoadBallFrames(const BallEffectMaster& ball)
+{
+	if (ball.id <= 0 || ball.effectImage.empty() || ball.frameW <= 0 || ball.frameH <= 0)
+	{
+		return nullptr;
+	}
+
+	auto it = ballFrames_.find(ball.id);
+	if (it != ballFrames_.end())
+	{
+		return it->second.empty() ? nullptr : &it->second;
+	}
+
+	std::vector<int> handles(ball.frameCount, -1);
+	const int rows = (ball.frameCount + ball.columns - 1) / ball.columns;
+	if (LoadDivGraph(ball.effectImage.c_str(), ball.frameCount, ball.columns, rows,
+		ball.frameW, ball.frameH, handles.data()) == -1)
+	{
+		handles.clear();	// 読み込み失敗：簡易フラッシュで進める
+	}
+
+	std::vector<int>& slot = ballFrames_[ball.id];
+	slot = std::move(handles);
+	return slot.empty() ? nullptr : &slot;
+}
+
+void BattleScene::StartSendOut(int side)
+{
+	hidden_[side] = true;	// 出てくるまでは隠す
+	sendOut_ = {};
+
+	// CSVにそのボールが無い（ファイルが無い）ときは、仮のボールで進める
+	const BallEffectMaster* ball = ballData_.Get(GetBallId(side));
+	if (ball == nullptr)
+	{
+		ball = &defaultBall_;
+	}
+
+	sendOut_.active = true;
+	sendOut_.stage = SendOutStage::THROW;
+	sendOut_.side = side;
+	sendOut_.timer = 0;
+	sendOut_.ball = ball;
+	sendOut_.ballImg = LoadMonsterImage(ball->ballImage);
+	sendOut_.openImg = ball->openImage.empty() ? sendOut_.ballImg : LoadMonsterImage(ball->openImage);
+	sendOut_.effectFrames = LoadBallFrames(*ball);
+
+	// プレイヤーの投げモーション（最初に使うときに読み込む）
+	// 1枚ずつ別画像の場合：読み込めたものだけを順番に並べる
+	if (side == PLAYER && playerSprite_.empty() && !playerImagePaths_.empty())
+	{
+		for (const std::string& path : playerImagePaths_)
+		{
+			const int handle = LoadGraph(path.c_str());
+			if (handle != -1)
+			{
+				playerSprite_.push_back(handle);
+			}
+		}
+	}
+	// スプライトシートの場合
+	if (side == PLAYER && playerSprite_.empty() && !playerSpritePath_.empty() && playerSpriteFrames_ > 0)
+	{
+		std::vector<int> handles(playerSpriteFrames_, -1);
+		const int cols = std::max(1, playerSpriteColumns_);
+		const int rows = (playerSpriteFrames_ + cols - 1) / cols;
+		if (LoadDivGraph(playerSpritePath_.c_str(), playerSpriteFrames_, cols, rows,
+			playerSpriteW_, playerSpriteH_, handles.data()) != -1)
+		{
+			playerSprite_ = std::move(handles);
+		}
+	}
+}
+
+int BattleScene::SendOutStageFrames(void) const
+{
+	const BallEffectMaster* ball = sendOut_.ball;
+	switch (sendOut_.stage)
+	{
+	case SendOutStage::THROW:
+		return SENDOUT_THROW_FRAMES;
+	case SendOutStage::BOUNCE:
+		return (ball != nullptr) ? std::max(0, ball->bounces) * SENDOUT_BOUNCE_FRAMES : 0;
+	case SendOutStage::OPEN:
+	{
+		int f = SENDOUT_OPEN_MIN_FRAMES;
+		if (ball != nullptr && sendOut_.effectFrames != nullptr)
+		{
+			f = std::max(f, static_cast<int>(sendOut_.effectFrames->size()) * ball->frameTime);
+		}
+		return f;
+	}
+	case SendOutStage::EMERGE:
+		return SENDOUT_EMERGE_FRAMES;
+	}
+	return 0;
+}
+
+void BattleScene::UpdateSendOut(void)
+{
+	if (!sendOut_.active)
+	{
+		return;
+	}
+
+	sendOut_.timer++;
+
+	// 今のステージが終わったら次へ（長さ0のステージは飛ばす）
+	while (sendOut_.timer >= SendOutStageFrames())
+	{
+		sendOut_.timer = 0;
+		switch (sendOut_.stage)
+		{
+		case SendOutStage::THROW:
+			sendOut_.stage = SendOutStage::BOUNCE;
+			break;
+		case SendOutStage::BOUNCE:
+			sendOut_.stage = SendOutStage::OPEN;
+			break;
+		case SendOutStage::OPEN:
+			sendOut_.stage = SendOutStage::EMERGE;
+			break;
+		case SendOutStage::EMERGE:
+			hidden_[sendOut_.side] = false;	// ここから通常の描画に戻る
+			sendOut_ = {};
+			return;
+		}
+	}
+}
+
+// ボール1個を描く。画像が無いときは赤い円で代用する
+void BattleScene::DrawBallSprite(int x, int y, int size, double angle, int alpha, bool opened) const
+{
+	const int img = opened ? sendOut_.openImg : sendOut_.ballImg;
+
+	SetDrawBlendMode(DX_BLENDMODE_ALPHA, std::max(0, std::min(alpha, 255)));
+	if (img != -1)
+	{
+		int w = 0, h = 0;
+		GetGraphSize(img, &w, &h);
+		if (w > 0 && h > 0)
+		{
+			DrawRotaGraph(x, y, static_cast<double>(size) / std::max(w, h), angle, img, TRUE);
+		}
+	}
+	else
+	{
+		const int r = std::max(2, size / 2);
+		DrawCircle(x, y, r, GetColor(220, 50, 50), TRUE);
+		// 回転がわかるように、白い丸を円の内側で回す
+		const int bx = x + static_cast<int>(std::cos(angle) * r * 0.45);
+		const int by = y + static_cast<int>(std::sin(angle) * r * 0.45);
+		DrawCircle(bx, by, std::max(2, r / 3), GetColor(255, 255, 255), TRUE);
+		DrawCircle(x, y, r, GetColor(40, 40, 40), FALSE);
+	}
+	SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+}
+
+// ボールを投げるプレイヤー：投げモーションのあと、左へ去っていく
+void BattleScene::DrawThrower(void) const
+{
+	if (!sendOut_.active || sendOut_.side != PLAYER || playerSprite_.empty())
+	{
+		return;
+	}
+
+	const int n = static_cast<int>(playerSprite_.size());
+	int index = n - 1;
+	int offsetX = 0;
+	if (sendOut_.stage == SendOutStage::THROW)
+	{
+		index = std::min(n - 1, sendOut_.timer * n / SENDOUT_THROW_FRAMES);
+	}
+	else if (sendOut_.stage == SendOutStage::BOUNCE)
+	{
+		offsetX = -static_cast<int>(SX(200) * std::min(1.0f, sendOut_.timer / 20.0f));
+	}
+	else
+	{
+		return;
+	}
+	DrawImageFit(playerSprite_[index], SX(70) + offsetX, SY(350), SY(190));
+}
+
+void BattleScene::DrawSendOut(void) const
+{
+	if (!sendOut_.active || sendOut_.ball == nullptr)
+	{
+		return;
+	}
+
+	const SendOutPlay& s = sendOut_;
+	const BallEffectMaster& ball = *s.ball;
+
+	int cx = 0, bottom = 0, size = 0;
+	GetMonsterLayout(s.side, cx, bottom, size);
+
+	const int landX = cx;				// ボールが落ちる場所（モンスターの足元）
+	const int landY = bottom - SY(12);
+	const int startX = (s.side == PLAYER) ? SX(100) : SX(600);	// 投げ始めの位置
+	const int startY = (s.side == PLAYER) ? SY(240) : SY(30);
+	const int ballSize = SY(ball.ballSize);
+	const int total = std::max(1, SendOutStageFrames());
+	const float t = std::min(1.0f, static_cast<float>(s.timer) / total);
+
+	DrawThrower();
+
+	switch (s.stage)
+	{
+	case SendOutStage::THROW:
+	{
+		// 山なりに飛んで、くるくる回る
+		const int x = startX + static_cast<int>((landX - startX) * t);
+		const int y = startY + static_cast<int>((landY - startY) * t - SY(90) * 4.0f * t * (1.0f - t));
+		DrawBallSprite(x, y, ballSize, s.timer * 0.5, 255, false);
+		break;
+	}
+
+	case SendOutStage::BOUNCE:
+	{
+		// 落ちてから、だんだん小さくバウンドする
+		const int k = s.timer / SENDOUT_BOUNCE_FRAMES;
+		const float u = static_cast<float>(s.timer % SENDOUT_BOUNCE_FRAMES) / SENDOUT_BOUNCE_FRAMES;
+		const float height = SY(36) * std::pow(0.55f, static_cast<float>(k));
+		const int y = landY - static_cast<int>(height * 4.0f * u * (1.0f - u));
+		DrawBallSprite(landX, y, ballSize, SENDOUT_THROW_FRAMES * 0.5 + s.timer * 0.1, 255, false);
+		break;
+	}
+
+	case SendOutStage::OPEN:
+	{
+		// ボールが開いてエフェクト。エフェクトはモンスターが出る位置の中心に出す
+		const int ex = cx;
+		const int ey = bottom - size / 2;
+
+		const int ballAlpha = (t < 0.3f) ? 255 : static_cast<int>(255 * (1.0f - (t - 0.3f) / 0.7f));
+		DrawBallSprite(landX, landY, ballSize, SENDOUT_THROW_FRAMES * 0.5, ballAlpha, true);
+
+		if (s.effectFrames != nullptr && !s.effectFrames->empty())
+		{
+			const int index = std::min(static_cast<int>(s.effectFrames->size()) - 1, s.timer / ball.frameTime);
+			const double scale = ball.scalePercent / 100.0 * screenH_ / BASE_H;
+			if (ball.additive)
+			{
+				SetDrawBlendMode(DX_BLENDMODE_ADD, 255);
+			}
+			DrawRotaGraph(ex, ey, scale, 0.0, (*s.effectFrames)[index], TRUE);
+			SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+		}
+		else
+		{
+			// エフェクト画像が無いときの簡易フラッシュ（広がりながら消える）
+			const int radius = SY(20) + static_cast<int>(size * 0.6f * t);
+			SetDrawBlendMode(DX_BLENDMODE_ADD, static_cast<int>(220 * (1.0f - t)));
+			DrawCircle(ex, ey, radius, GetColor(ball.glowR, ball.glowG, ball.glowB), TRUE);
+			SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+		}
+		break;
+	}
+
+	case SendOutStage::EMERGE:
+	{
+		// ボールのあった位置から、光りながら大きくなって出てくる
+		const float e = 1.0f - (1.0f - t) * (1.0f - t);
+		const int img = side_[s.side].image;
+		const int curSize = std::max(4, static_cast<int>(size * e));
+		const int curBottom = landY + static_cast<int>((bottom - landY) * e);
+
+		DrawImageFit(img, cx, curBottom, curSize);
+
+		// 出はじめは、ボールの色で光らせる（だんだん元の色に戻る）
+		SetDrawBlendMode(DX_BLENDMODE_ADD, static_cast<int>(255 * (1.0f - t)));
+		SetDrawBright(ball.glowR, ball.glowG, ball.glowB);
+		DrawImageFit(img, cx, curBottom, curSize);
+		SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+		SetDrawBright(255, 255, 255);
+		break;
+	}
 	}
 }

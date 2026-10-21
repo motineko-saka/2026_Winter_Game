@@ -9,6 +9,7 @@
 #include <vector>
 #include "../SceneBase.h"
 #include "../../Object/Monster/MonsterData.h"	
+#include "../../Object/Monster/BallEffectData.h"
 
 class MonsterParty;
 class ItemData;
@@ -65,6 +66,17 @@ public:
 
 	// 勝ったときにもらえる賞金（トレーナー戦のみ。WINのあとに読む）
 	int GetPrize(void) const { return prize_; }
+
+	// モンスターを出すときのボールの種類（BallEffect.csv の id）。PushScene の前に呼ぶ
+	//   MonsterInstance にボールIDを持たせたら、GetBallId の中身をそちらに差し替える
+	void SetBall(int playerBallId, int enemyBallId = 1) { playerBallId_ = playerBallId; enemyBallId_ = enemyBallId; }
+
+	// ボールを投げるプレイヤーのスプライトシート（任意。PushScene の前に呼ぶ）
+	//   投げるモーションを frames コマ並べた画像。未設定ならプレイヤーは描かない
+	void SetPlayerSprite(const std::string& path, int frames, int columns, int frameW, int frameH);
+
+	// 投げモーションが1枚ずつ別の画像のとき（任意。順番に再生される）
+	void SetPlayerImages(const std::vector<std::string>& paths) { playerImagePaths_ = paths; }
 
 private:
 
@@ -145,6 +157,27 @@ private:
 		int timer = 0;			// 今のステージの経過フレーム
 	};
 
+	// モンスターを出す演出の進行（投げる → バウンド → 開く → 出てくる）
+	enum class SendOutStage
+	{
+		THROW,		// ボールが弧を描いて飛ぶ（プレイヤーは投げモーション）
+		BOUNCE,		// 地面で何回かバウンドする
+		OPEN,		// ボールが開いてエフェクトが出る
+		EMERGE,		// モンスターが中央から光りながら大きくなって出てくる
+	};
+
+	struct SendOutPlay
+	{
+		bool active = false;
+		SendOutStage stage = SendOutStage::THROW;
+		int side = 0;
+		int timer = 0;
+		const BallEffectMaster* ball = nullptr;		// このボールの設定（CSV）
+		int ballImg = -1;
+		int openImg = -1;
+		const std::vector<int>* effectFrames = nullptr;	// 開いたときのエフェクト（分割済み）
+	};
+
 	// 1ステップ＝1メッセージ分の処理
 	using Step = std::function<void(void)>;
 
@@ -219,6 +252,17 @@ private:
 	void GetMonsterAnimOffset(int side, int& ox, int& oy, bool& red) const;	// モンスター画像のずれ（前に出る・揺れる）と赤点滅
 	const std::vector<int>* LoadAnimFrames(const MoveAnimData& anim);	// シートを分割して読み込む（キャッシュあり）
 
+	// ---------- モンスターを出す演出 ----------
+	void StartSendOut(int side);				// ボールを投げて出す演出を始める（出るまでモンスターは隠れる）
+	void UpdateSendOut(void);
+	void DrawSendOut(void) const;
+	void DrawBallSprite(int x, int y, int size, double angle, int alpha, bool opened) const;
+	void DrawThrower(void) const;				// ボールを投げるプレイヤー
+	int SendOutStageFrames(void) const;			// 今のステージの長さ
+	int GetBallId(int side) const { return (side == PLAYER) ? playerBallId_ : enemyBallId_; }
+	void GetMonsterLayout(int side, int& cx, int& bottomY, int& size) const;	// モンスター画像の配置（DrawとDrawSendOutで共通）
+	const std::vector<int>* LoadBallFrames(const BallEffectMaster& ball);	// エフェクトのシートを分割して読み込む（キャッシュあり）
+
 	// ---------- 補助 ----------
 	int LoadMonsterImage(const std::string& path);	// パスから画像を読み込む（同じパスはキャッシュを返す）
 	std::string Name(int side) const;
@@ -234,6 +278,11 @@ private:
 	static const int EVOLVE_FRAMES = 240;	// 進化演出の長さ（60fpsで約4秒）
 	static const int MOVE_LUNGE_FRAMES = 10;	// 技を出す前に前へ出る（戻る）フレーム数
 	static const int MOVE_HIT_FRAMES = 30;		// 技を食らったときの点滅・揺れのフレーム数
+	static const int SENDOUT_THROW_FRAMES = 40;		// ボールが飛ぶ長さ
+	static const int SENDOUT_BOUNCE_FRAMES = 14;	// 1バウンドの長さ
+	static const int SENDOUT_EMERGE_FRAMES = 24;	// モンスターが出てくる長さ
+	static const int SENDOUT_OPEN_MIN_FRAMES = 20;	// ボールが開く演出の最低の長さ
+	static constexpr const char* BALL_EFFECT_CSV = "Data/Csv/BallEffect.csv";	// ボール演出の外部ファイル
 
 	// レイアウトの設計基準サイズ（この値を基準に実画面へ拡縮する）
 	static const int BASE_W = 640;
@@ -294,6 +343,22 @@ private:
 	std::unordered_map<std::string, int> images_;	// パス→画像ハンドルのキャッシュ
 
 	std::mt19937 rng_;
+
+	// モンスターを出す演出
+	BallEffectData ballData_;
+	BallEffectMaster defaultBall_{};				// CSVに無いときの仮のボール
+	SendOutPlay sendOut_;
+	std::array<bool, 2> hidden_{};					// 出てくるまでモンスターと情報枠を隠す
+	int playerBallId_ = 1;
+	int enemyBallId_ = 1;
+	std::unordered_map<int, std::vector<int>> ballFrames_;	// ボールID→エフェクトの画像ハンドル
+	std::string playerSpritePath_;
+	int playerSpriteFrames_ = 0;
+	int playerSpriteColumns_ = 1;
+	int playerSpriteW_ = 0;
+	int playerSpriteH_ = 0;
+	std::vector<std::string> playerImagePaths_;		// 1枚ずつ別画像で渡されたときのパス
+	std::vector<int> playerSprite_;					// 投げモーションの画像ハンドル（シート分割でも個別画像でもここに入る）
 
 	MoveAnimPlay moveAnim_;
 	std::unordered_map<int, std::vector<int>> animFrames_;	// アニメID→分割した画像ハンドル

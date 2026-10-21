@@ -552,6 +552,13 @@ void GameScene::StartBattle(int monsterId, int level)
 	battle_ = std::make_shared<BattleScene>();
 	battle_->Setup(&monsterData_, &monsterParty_, monsterId, level);
 	battle_->SetItems(&itemData_, &inventory_);		// バッグを使えるようにする
+	battle_->SetPlayerImages({                      
+	"Data/Image/Player/1.png",
+	"Data/Image/Player/2.png",
+	"Data/Image/Player/3.png",
+	"Data/Image/Player/4.png",
+	"Data/Image/Player/5.png",
+		});
 	SceneManager::GetInstance()->PushScene(battle_);
 }
 
@@ -790,6 +797,13 @@ void GameScene::StartTrainerBattle(const TrainerSpawn& spawn)
 	battle_ = std::make_shared<BattleScene>();
 	battle_->SetupTrainer(&monsterData_, &monsterParty_, trainer);
 	battle_->SetItems(&itemData_, &inventory_);
+	battle_->SetPlayerImages({
+		"Data/Image/Player/1.png",
+		"Data/Image/Player/2.png",
+		"Data/Image/Player/3.png",
+		"Data/Image/Player/4.png",
+		"Data/Image/Player/5.png",
+	});
 	SceneManager::GetInstance()->PushScene(battle_);
 }
 

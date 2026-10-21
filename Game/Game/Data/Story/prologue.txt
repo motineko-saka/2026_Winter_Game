@@ -37,8 +37,24 @@
 #
 野生のモンスターが飛び出してきた！
 
-@battle 1 3
+// 選んだ子に応じて相手を変える（starter: 1=風 2=炎 3=水）
+@if starter == 1 enemy_water
+@if starter == 2 enemy_wind
+@if starter == 3 enemy_fire
 
+*enemy_water
+@battle 7 3
+@jump afterbattle
+
+*enemy_wind
+@battle 1 3
+@jump afterbattle
+
+*enemy_fire
+@battle 4 3
+@jump afterbattle
+
+*afterbattle
 // battle_result: 1=勝ち 0=負け 2=逃げた 3=捕まえた
 @if battle_result == 1 won
 @if battle_result == 0 lost

@@ -1,0 +1,2 @@
+#id,name,ballimage,openimage,ballsize,bounces,effectimage,columns,framecount,framew,frameh,frametime,scalepercent,additive,glowr,glowg,glowb
+1,モンスターボール,,,28,2,,1,1,0,0,3,100,1,255,255,255
