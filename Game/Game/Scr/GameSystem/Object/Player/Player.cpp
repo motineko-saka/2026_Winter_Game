@@ -49,6 +49,8 @@ void Player::Init(void)
 	curPlayerAnim_ = IDLE;
 	moveAnimDelay_ = 0;
 	reverseFlg_ = false;
+	isRun_ = false;
+	facing_ = FACING_DOWN;
 
 	// 初期向きを記憶
 	reverseFlg_ = initialReverseFlg_;
@@ -63,6 +65,15 @@ void Player::Load(void)
 	animHandle_[UP_B] = LoadGraph("Data/Image/Player/Back_Walk_2.png");
 	animHandle_[DOWN_A] = LoadGraph("Data/Image/Player/Walk_1.png");
 	animHandle_[DOWN_B] = LoadGraph("Data/Image/Player/Walk_2.png");
+	animHandle_[UP_IDLE] = LoadGraph("Data/Image/Player/Back_Idle.png");
+
+#ifdef _DEBUG
+	// 読み込み失敗の確認用（失敗すると -1 になり、何も描画されない）
+	if (animHandle_[UP_IDLE] == -1)
+	{
+		LogMessage("Back_Idle.png の読み込みに失敗", "playerLog.txt");
+	}
+#endif // _DEBUG
 }
 
 void Player::LoadEnd(void)
@@ -107,11 +118,28 @@ void Player::MoveStateIdle(ObjectBase& obj)
 	Player& player = static_cast<Player&>(obj);
 	player.image_.pos.x += player.movedPos_.x;
 
-	// Idleに戻るときは必ず最初の向きに戻る
-	player.reverseFlg_ = player.initialReverseFlg_;
-
-	player.curPlayerAnim_ = IDLE;
+	// 最後に向いていた向きの待機画像にする（向き自体は変更しない）
+	player.SetIdleAnim();
 	player.moveAnimDelay_ = 0;
+}
+
+void Player::SetIdleAnim(void)
+{
+	switch (facing_)
+	{
+	case FACING_SIDE:
+		// 横向きの待機は横歩きの1コマ目を使う（左右は reverseFlg_ で反転）
+		curPlayerAnim_ = WALK_A;
+		break;
+	case FACING_UP:
+		// Back_Idle.png が読み込めていない場合（ハンドルが -1）は上歩きの1コマ目で代用する
+		curPlayerAnim_ = (animHandle_[UP_IDLE] != -1) ? UP_IDLE : UP_A;
+		break;
+	case FACING_DOWN:
+	default:
+		curPlayerAnim_ = IDLE;
+		break;
+	}
 }
 
 void Player::MoveStateWalk(ObjectBase& obj)
@@ -132,8 +160,13 @@ void Player::MoveStateRun(ObjectBase& obj)
 	Player& player = static_cast<Player&>(obj);
 	player.image_.pos.x += player.movedPos_.x;
 
-	// 動いてないならアニメーションしない
-	if (player.movedPos_.x != 0)
+	// 動いてないならアニメーションせず、向きに応じた待機画像にする
+	if (player.movedPos_.x == 0)
+	{
+		player.SetIdleAnim();
+		player.moveAnimDelay_ = 0;
+	}
+	else
 	{
 		// 歩きアニメ―ションの切り替え
 		if (player.moveAnimDelay_++ > RUN_ANIM_DELAY)
@@ -157,8 +190,9 @@ void Player::MoveStateUp(ObjectBase& obj)
 	}
 	else
 	{
-		// 歩きアニメ―ションの切り替え
-		if (player.moveAnimDelay_++ > WALK_ANIM_DELAY)
+		// 歩きアニメ―ションの切り替え（ダッシュ中は速く）
+		const int delay = player.isRun_ ? RUN_ANIM_DELAY : WALK_ANIM_DELAY;
+		if (player.moveAnimDelay_++ > delay)
 		{
 			player.curPlayerAnim_ == UP_A ? player.curPlayerAnim_ = UP_B : player.curPlayerAnim_ = UP_A;
 			player.moveAnimDelay_ = 0;
@@ -178,8 +212,9 @@ void Player::MoveStateDown(ObjectBase& obj)
 	}
 	else
 	{
-		// 歩きアニメ―ションの切り替え
-		if (player.moveAnimDelay_++ > WALK_ANIM_DELAY)
+		// 歩きアニメ―ションの切り替え（ダッシュ中は速く）
+		const int delay = player.isRun_ ? RUN_ANIM_DELAY : WALK_ANIM_DELAY;
+		if (player.moveAnimDelay_++ > delay)
 		{
 			player.curPlayerAnim_ == DOWN_A ? player.curPlayerAnim_ = DOWN_B : player.curPlayerAnim_ = DOWN_A;
 			player.moveAnimDelay_ = 0;
@@ -199,12 +234,15 @@ void Player::MoveController(void)
 	{
 		moveState = MOVE_STATE_RUN;
 	}
+	// ダッシュ中かどうかを記録（上下移動で moveState が上書きされる前に保存）
+	isRun_ = (moveState == MOVE_STATE_RUN);
 
 	// 左に移動
 	if (InputManager::GetInstance()->IsNew(KEY_INPUT_A))
 	{
 		// 向きを左に
 		reverseFlg_ = true;
+		facing_ = FACING_SIDE;
 
 		switch (moveState)
 		{
@@ -223,6 +261,7 @@ void Player::MoveController(void)
 	{
 		// 向きを右に
 		reverseFlg_ = false;
+		facing_ = FACING_SIDE;
 
 		switch (moveState)
 		{
@@ -239,19 +278,15 @@ void Player::MoveController(void)
 	// 上に移動
 	else if (InputManager::GetInstance()->IsNew(KEY_INPUT_W))
 	{
-		// 向きをデフォルトに
-		reverseFlg_ = initialReverseFlg_;
-
-		movedPos_.y = -WALK_SPEED;
+		facing_ = FACING_UP;
+		movedPos_.y = isRun_ ? -RUN_SPEED : -WALK_SPEED;
 		moveState = MOVE_STATE_UP;
 	}
 	// 下に移動
 	else if (InputManager::GetInstance()->IsNew(KEY_INPUT_S))
 	{
-		// 向きをデフォルトに
-		reverseFlg_ = initialReverseFlg_;
-
-		movedPos_.y = WALK_SPEED;
+		facing_ = FACING_DOWN;
+		movedPos_.y = isRun_ ? RUN_SPEED : WALK_SPEED;
 		moveState = MOVE_STATE_DOWN;
 	}
 

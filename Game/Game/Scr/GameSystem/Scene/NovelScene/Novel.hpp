@@ -36,6 +36,7 @@ namespace Novel {
 
 		std::string bgDir = "DATA/BACKGROUND";
 		std::string charaDir = "DATA/CHARACTER";
+		std::string choiceDir = "DATA/CHARACTER";   // images for @choicecard
 		std::string bgmDir = "DATA/BACKGROUNDMUSIC";
 		std::string seDir = "DATA/SOUNDEFFECT";
 
@@ -63,6 +64,7 @@ namespace Novel {
 		bool skip = false;
 		bool toggleAuto = false;
 		bool up = false, down = false;
+		bool left = false, right = false;
 		bool backlog = false;
 		bool cancel = false;
 		int wheel = 0;
@@ -238,7 +240,7 @@ namespace Novel {
 			int target = -1;   // block @if: line to go to when false / @else: line to go to (the @endif)
 		};
 		struct Chara { std::string id, file, pos; int handle; };
-		struct Choice { std::string text, label; };
+		struct Choice { std::string text, label, image; int handle = -1; };
 
 		bool Parse(const std::string& src) {
 			lines_.clear(); labels_.clear(); warnings_.clear();
@@ -445,8 +447,19 @@ namespace Novel {
 			else if (c == "endif") {}
 			else if (c == "choice") {
 				choices_.clear();
-				for (size_t i = 0; i + 1 < a.size(); i += 2) choices_.push_back({ a[i], a[i + 1] });
+				choiceCards_ = false;
+				for (size_t i = 0; i + 1 < a.size(); i += 2) { Choice ch; ch.text = a[i]; ch.label = a[i + 1]; choices_.push_back(ch); }
 				if (choices_.empty()) { Warn("@choice: no options"); return; }
+				choiceSel_ = 0; choiceLine_ = curIdx; state_ = State::Choice;
+			}
+			else if (c == "choicecard") {   // @choicecard "text" label image  "text" label image ...
+				choices_.clear(); choiceCards_ = true;
+				for (size_t i = 0; i + 2 < a.size(); i += 3) {
+					Choice ch; ch.text = a[i]; ch.label = a[i + 1]; ch.image = a[i + 2];
+					ch.handle = GetGraph(cfg.choiceDir, ch.image);
+					choices_.push_back(ch);
+				}
+				if (choices_.empty()) { Warn("@choicecard: no options (need text label image)"); return; }
 				choiceSel_ = 0; choiceLine_ = curIdx; state_ = State::Choice;
 			}
 			else {
@@ -462,8 +475,8 @@ namespace Novel {
 
 		void UpdateChoice(const Input& in) {
 			const int n = (int)choices_.size();
-			if (in.up)   choiceSel_ = (choiceSel_ + n - 1) % n;
-			if (in.down) choiceSel_ = (choiceSel_ + 1) % n;
+			if (in.up || (choiceCards_ && in.left))  choiceSel_ = (choiceSel_ + n - 1) % n;
+			if (in.down || (choiceCards_ && in.right)) choiceSel_ = (choiceSel_ + 1) % n;
 			bool pick = in.ok;
 			if (in.mouseX >= 0) {
 				for (int i = 0; i < n; ++i) {
@@ -545,11 +558,12 @@ namespace Novel {
 			const bool kU = CheckHitKey(KEY_INPUT_UP) != 0 || CheckHitKey(KEY_INPUT_W) != 0;
 			const bool kD = CheckHitKey(KEY_INPUT_DOWN) != 0 || CheckHitKey(KEY_INPUT_S) != 0;
 			const bool kB = CheckHitKey(KEY_INPUT_BACK) != 0;
+			const bool kLe = CheckHitKey(KEY_INPUT_LEFT) != 0, kRi = CheckHitKey(KEY_INPUT_RIGHT) != 0;
 
 			// First call: treat keys that are already held (e.g. the Enter that opened this scene)
 			// as "already pressed", so they do not count as a new press.
 			if (!inputPrimed_) {
-				pOk_ = kOk; pL_ = mL; pR_ = mR; pA_ = kA; pLog_ = kL; pU_ = kU; pD_ = kD; pB_ = kB;
+				pOk_ = kOk; pL_ = mL; pR_ = mR; pA_ = kA; pLog_ = kL; pU_ = kU; pD_ = kD; pB_ = kB; pLe_ = kLe; pRi_ = kRi;
 				inputPrimed_ = true;
 			}
 
@@ -557,6 +571,7 @@ namespace Novel {
 			in.cancel = kB && !pB_;
 			in.toggleAuto = kA && !pA_;  in.backlog = kL && !pLog_;
 			in.up = kU && !pU_;  in.down = kD && !pD_;
+			in.left = kLe && !pLe_;  in.right = kRi && !pRi_;
 			in.skip = CheckHitKey(KEY_INPUT_LCONTROL) || CheckHitKey(KEY_INPUT_RCONTROL);
 			if (cfg.useMouse) {
 				in.click = mL && !pL_;
@@ -564,14 +579,14 @@ namespace Novel {
 				in.wheel = GetMouseWheelRotVol();
 				GetMousePoint(&in.mouseX, &in.mouseY);
 			}
-			pOk_ = kOk; pL_ = mL; pR_ = mR; pA_ = kA; pLog_ = kL; pU_ = kU; pD_ = kD; pB_ = kB;
+			pOk_ = kOk; pL_ = mL; pR_ = mR; pA_ = kA; pLog_ = kL; pU_ = kU; pD_ = kD; pB_ = kB; pLe_ = kLe; pRi_ = kRi;
 
 			const int now = GetNowCount();
 			in.dtMs = lastMs_ ? std::min(now - lastMs_, 100) : 16;
 			lastMs_ = now;
 			return in;
 		}
-		bool pOk_ = false, pL_ = false, pR_ = false, pA_ = false, pLog_ = false, pU_ = false, pD_ = false, pB_ = false;
+		bool pOk_ = false, pL_ = false, pR_ = false, pA_ = false, pLog_ = false, pU_ = false, pD_ = false, pB_ = false, pLe_ = false, pRi_ = false;
 		bool inputPrimed_ = false;
 		int lastMs_ = 0;
 
@@ -653,6 +668,13 @@ namespace Novel {
 		}
 
 		void ChoiceRect(int i, int n, int& x, int& y, int& w, int& h) const {
+			if (choiceCards_) {   // horizontal cards, image on top, text below
+				const int W = ScreenW(), H = ScreenH(), gap = 16;
+				w = std::min(W / 4, (W - gap * (n + 1)) / n); h = H * 55 / 100;
+				x = (W - (n * w + (n - 1) * gap)) / 2 + i * (w + gap);
+				y = H * 6 / 100;
+				return;
+			}
 			const int H = ScreenH(), W = ScreenW(), lh = LineH() + 16;
 			w = W * 3 / 5; h = lh; x = (W - w) / 2;
 			const int top = (H * 2 / 5) - (n * (lh + 8)) / 2;
@@ -663,8 +685,27 @@ namespace Novel {
 			for (int i = 0; i < n; ++i) {
 				int x, y, w, h; ChoiceRect(i, n, x, y, w, h);
 				DrawBlendBox(x, y, x + w, y + h);
+				const int col = (i == choiceSel_) ? cfg.choiceSelRGB : cfg.textRGB;
+				if (choiceCards_) {
+					const int pad = 8, textH = LineH() + 10;
+					if (choices_[i].handle >= 0) {   // fit the image in the area above the text, keep aspect
+						int gw, gh; GetGraphSize(choices_[i].handle, &gw, &gh);
+						const int aw = w - pad * 2, ah = h - textH - pad * 2;
+						const double sc = std::min((double)aw / gw, (double)ah / gh);
+						const int dw = (int)(gw * sc), dh = (int)(gh * sc);
+						const int ix = x + (w - dw) / 2, iy = y + pad + (ah - dh) / 2;
+						DrawExtendGraph(ix, iy, ix + dw, iy + dh, choices_[i].handle, TRUE);
+					}
+					const std::string& t = choices_[i].text;
+					Str(x + (w - StrW(t)) / 2, y + h - textH + 4, t, col);
+					if (i == choiceSel_) { DrawBox(x, y, x + w, y + h, Col(cfg.choiceSelRGB), FALSE); DrawBox(x + 1, y + 1, x + w - 1, y + h - 1, Col(cfg.choiceSelRGB), FALSE); }
+					else {   // dim the unselected cards
+						SetDrawBlendMode(DX_BLENDMODE_ALPHA, 90); DrawBox(x, y, x + w, y + h, 0, TRUE); SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+					}
+					continue;
+				}
 				if (i == choiceSel_) DrawBox(x, y, x + w, y + h, Col(cfg.choiceSelRGB), FALSE);
-				Str(x + (w - StrW(choices_[i].text)) / 2, y + 8, choices_[i].text, i == choiceSel_ ? cfg.choiceSelRGB : cfg.textRGB);
+				Str(x + (w - StrW(choices_[i].text)) / 2, y + 8, choices_[i].text, col);
 			}
 		}
 
@@ -706,7 +747,7 @@ namespace Novel {
 		double shown_ = 0; int idleMs_ = 0, waitMs_ = 0;
 		bool auto_ = false;
 
-		std::vector<Choice> choices_; int choiceSel_ = 0;
+		std::vector<Choice> choices_; int choiceSel_ = 0; bool choiceCards_ = false;
 
 		int bg_ = -1; std::string bgName_, bgmName_; int bgmHandle_ = -1;
 		std::vector<Chara> charas_;

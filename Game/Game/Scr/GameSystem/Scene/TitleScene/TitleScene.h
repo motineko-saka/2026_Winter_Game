@@ -20,4 +20,5 @@ public:
 
 private:
 
+	int image_ = -1;
 };

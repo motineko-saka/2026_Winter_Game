@@ -1,2 +1,4 @@
-#id,name,ballimage,openimage,ballsize,bounces,effectimage,columns,framecount,framew,frameh,frametime,scalepercent,additive,glowr,glowg,glowb
-1,モンスターボール,,,28,2,,1,1,0,0,3,100,1,255,255,255
+#id,name,ballimage,openimage,ballsize,bounces,effectimage,columns,framecount,framew,frameh,frametime,scalepercent,additive,glowr,glowg,glowb,catchimage,catchcolumns,catchframecount,catchframew,catchframeh,catchframetime,catchscalepercent
+# 捕まえる演出：idにボールのアイテムIDを書くと、そのボールを投げたときの演出になります
+# 捕まえるときの吸い込み・出てくる演出は effectimage を使い回します。catch～は成功したときの光です（空欄でもOK）
+1,モンスターボール,,,28,2,,1,1,0,0,3,100,1,255,255,255,,1,1,0,0,3,100

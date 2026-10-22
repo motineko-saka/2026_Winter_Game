@@ -11,4 +11,4 @@
 #   (empty)                      = placeholder box,,,,,,
 # first frame = standing. walking: 2 frames alternate / 3+ frames loop without the first,,,,,,
 # messages must not contain commas,,,,,,
-1,お嬢様　まりあ,Data/Image/Player/Idle.png,200,わたくしと勝負なさるの？,負けましたわ,4:3|10:3
+1,オタク,Data/Image/Trainer/Otaku/otaku.png@3x4,200,ぼきの育てたモンスターは強いですぞ,ぼ、ぼきが負けるなんて…,10:10

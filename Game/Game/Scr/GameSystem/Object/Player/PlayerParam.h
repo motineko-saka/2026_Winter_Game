@@ -11,6 +11,7 @@ enum PlayerAnimation
 	HIT,		// îÌÉ_ÉÅ4
 	UP_A,		// è„è∏A
 	UP_B,		// è„è∏B
+	UP_IDLE,	// è„è∏ë“ã@
 	DOWN_A,		// â∫ç~A
 	DOWN_B,		// â∫ç~B
 

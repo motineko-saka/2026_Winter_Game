@@ -69,6 +69,8 @@ public:
 
 	// モンスターを出すときのボールの種類（BallEffect.csv の id）。PushScene の前に呼ぶ
 	//   MonsterInstance にボールIDを持たせたら、GetBallId の中身をそちらに差し替える
+	//   ボールを投げて捕まえるときは、BallEffect.csv の id に「そのボールのアイテムID」を書いた行の演出になる
+	//   （無ければここで決めたボール、それも無ければ仮のボール）
 	void SetBall(int playerBallId, int enemyBallId = 1) { playerBallId_ = playerBallId; enemyBallId_ = enemyBallId; }
 
 	// ボールを投げるプレイヤーのスプライトシート（任意。PushScene の前に呼ぶ）
@@ -178,6 +180,32 @@ private:
 		const std::vector<int>* effectFrames = nullptr;	// 開いたときのエフェクト（分割済み）
 	};
 
+	// 捕まえる演出の進行（投げる → 吸い込む → 落ちる → ゆれる → 成功／失敗）
+	enum class CatchStage
+	{
+		THROW,		// ボールが手前から飛んでくる
+		ABSORB,		// ボールが開いて、モンスターが光になって吸い込まれる
+		DROP,		// ボールが地面に落ちてバウンドする
+		SHAKE,		// ボールがゆれる（回数は捕獲判定の結果）
+		SUCCESS,	// 捕まえた：光と星が広がる
+		FAIL,		// 出てきてしまった：ボールが開いてモンスターが出てくる
+	};
+
+	struct CatchPlay
+	{
+		bool active = false;		// 演出中
+		bool hold = false;			// 捕まえたあと、ボールが地面に残っている
+		CatchStage stage = CatchStage::THROW;
+		int timer = 0;				// 今のステージの経過フレーム
+		int shakes = 0;				// ゆれる回数（0〜3）
+		bool caught = false;		// 捕まえられたか
+		const BallEffectMaster* ball = nullptr;			// このボールの設定（CSV）
+		int ballImg = -1;
+		int openImg = -1;
+		const std::vector<int>* openFrames = nullptr;	// 吸い込み・出てくるときのエフェクト（モンスターを出す演出と同じ）
+		const std::vector<int>* catchFrames = nullptr;	// 捕まえたときの光
+	};
+
 	// 1ステップ＝1メッセージ分の処理
 	using Step = std::function<void(void)>;
 
@@ -198,7 +226,7 @@ private:
 	int GetPriority(int side, int slot) const;
 	void ExecMove(int atk, int slot);
 	bool CanCatch(std::string& reason) const;	// 今ボールを投げられるか（だめなら理由が入る）
-	void TryCatch(double ballRate, const std::string& ballName);	// ボールを投げて捕獲判定をする
+	void TryCatch(int itemId, double ballRate, const std::string& ballName);	// ボールを投げて捕獲判定をする
 	void UseItem(int itemId, int partyIndex);	// アイテムを使う（ターンの中で実行される）
 	void RefreshBagList(void);				// バッグに出す（戦闘中に使える）アイテムの一覧を作り直す
 	void ApplyEffect(int atk, const MoveData& move, int dealt);
@@ -256,15 +284,27 @@ private:
 	void StartSendOut(int side);				// ボールを投げて出す演出を始める（出るまでモンスターは隠れる）
 	void UpdateSendOut(void);
 	void DrawSendOut(void) const;
-	void DrawBallSprite(int x, int y, int size, double angle, int alpha, bool opened) const;
+	void DrawBallSprite(int x, int y, int size, double angle, int alpha, int img) const;
 	void DrawThrower(void) const;				// ボールを投げるプレイヤー
 	int SendOutStageFrames(void) const;			// 今のステージの長さ
 	int GetBallId(int side) const { return (side == PLAYER) ? playerBallId_ : enemyBallId_; }
 	void GetMonsterLayout(int side, int& cx, int& bottomY, int& size) const;	// モンスター画像の配置（DrawとDrawSendOutで共通）
 	const std::vector<int>* LoadBallFrames(const BallEffectMaster& ball);	// エフェクトのシートを分割して読み込む（キャッシュあり）
 
+	// ---------- 捕まえる演出 ----------
+	void StartCatch(int itemId, int shakes, bool caught);	// ボールを投げて捕まえる演出を始める（終わるまでEnterは効かない）
+	void UpdateCatch(void);
+	void DrawCatch(void) const;
+	int CatchStageFrames(void) const;						// 今のステージの長さ
+	void DrawOpenEffect(int x, int y, int timer, float t, int size, const std::vector<int>* frames, const BallEffectMaster& ball) const;	// ボールが開いたときのエフェクト
+	void DrawCatchSparkle(int x, int y, float t, const BallEffectMaster& ball) const;	// 捕まえたときの簡易エフェクト（星と光の輪）
+	const BallEffectMaster* GetCatchBall(int itemId) const;	// 投げるボールの設定を決める
+	const std::vector<int>* LoadCatchFrames(const BallEffectMaster& ball);	// 捕まえたときの光のシートを読み込む（キャッシュあり）
+
 	// ---------- 補助 ----------
 	int LoadMonsterImage(const std::string& path);	// パスから画像を読み込む（同じパスはキャッシュを返す）
+	int LoadTrainerPortrait(const std::string& spec);	// Trainer.csv の画像指定から、トレーナーの立ち絵（下向き・立ち）を1枚読み込む
+	void DrawTrainerPortrait(void) const;					// トレーナーの立ち絵を、相手モンスターの位置に描く
 	std::string Name(int side) const;
 	int Rand(int lo, int hi);				// lo〜hi（両端を含む）
 	int SX(int x) const { return x * screenW_ / BASE_W; }	// 640x480基準のX座標を実画面に合わせる
@@ -282,6 +322,15 @@ private:
 	static const int SENDOUT_BOUNCE_FRAMES = 14;	// 1バウンドの長さ
 	static const int SENDOUT_EMERGE_FRAMES = 24;	// モンスターが出てくる長さ
 	static const int SENDOUT_OPEN_MIN_FRAMES = 20;	// ボールが開く演出の最低の長さ
+	static const int CATCH_THROW_FRAMES = 36;			// 捕まえる：ボールが飛ぶ長さ
+	static const int CATCH_ABSORB_MIN_FRAMES = 40;		// 捕まえる：吸い込む長さ（エフェクトが長ければそちらに合わせる）
+	static const int CATCH_DROP_FRAMES = 30;			// 捕まえる：ボールが落ちてバウンドする長さ
+	static const int CATCH_FALL_FRAMES = 16;			// 　うち、落ちるまでの長さ
+	static const int CATCH_SHAKE_WAIT_FRAMES = 20;		// 捕まえる：落ちてから、ゆれはじめるまでの間
+	static const int CATCH_SHAKE_FRAMES = 32;			// 捕まえる：1回ゆれる長さ
+	static const int CATCH_SHAKE_END_FRAMES = 16;		// 捕まえる：最後にゆれてから、結果が出るまでの間
+	static const int CATCH_SUCCESS_MIN_FRAMES = 60;		// 捕まえる：成功の光の長さ
+	static const int CATCH_FAIL_MIN_FRAMES = 40;		// 捕まえる：失敗してモンスターが出てくる長さ
 	static constexpr const char* BALL_EFFECT_CSV = "Data/Csv/BallEffect.csv";	// ボール演出の外部ファイル
 
 	// レイアウトの設計基準サイズ（この値を基準に実画面へ拡縮する）
@@ -309,13 +358,14 @@ private:
 	std::vector<int> bagList_;			// バッグに表示するアイテムID（戦闘中に使えるものだけ）
 	int usingItemId_ = 0;				// 使おうとしているアイテム（対象選択中）
 	int itemTarget_ = 0;				// アイテムを使う手持ちの番号
-	bool enemyInBall_ = false;		// 野生モンスターがボールに入っている間は画像を消す
 
 	// トレーナー戦（野生のときは trainer_ が nullptr）
 	const TrainerMasterData* trainer_ = nullptr;
 	std::vector<MonsterInstance> enemyParty_;	// トレーナーの手持ち
 	int enemyIndex_ = 0;						// 今出ている手持ちの番号
 	int prize_ = 0;								// もらった賞金
+	int trainerImg_ = -1;							// トレーナーの立ち絵（画像ハンドル。images_ が持つので Release で消える）
+	bool showTrainer_ = false;						// 立ち絵を表示中か（戦闘の最初と、勝ったあと）
 
 	// メッセージ進行
 	std::string msg_;
@@ -359,6 +409,10 @@ private:
 	int playerSpriteH_ = 0;
 	std::vector<std::string> playerImagePaths_;		// 1枚ずつ別画像で渡されたときのパス
 	std::vector<int> playerSprite_;					// 投げモーションの画像ハンドル（シート分割でも個別画像でもここに入る）
+
+	// 捕まえる演出
+	CatchPlay catch_;
+	std::unordered_map<int, std::vector<int>> catchFrames_;	// ボールID→捕まえたときの光の画像ハンドル
 
 	MoveAnimPlay moveAnim_;
 	std::unordered_map<int, std::vector<int>> animFrames_;	// アニメID→分割した画像ハンドル

@@ -61,6 +61,11 @@ private:
 	void RunEvent(const EventSpawn& e);						// イベントの台本を始める
 	void DrawEvents(void);									// 画像つきイベントを描く
 
+	// ---------- 回復スポット（話しかけると手持ちが全回復する） ----------
+	bool CheckHealSpot(void);					// 決定キーで話しかけたら全回復する（回復したらtrue）
+	void DrawHealSpot(void);					// 回復スポットのアニメーションを描く
+	void DrawHealMessage(void) const;			// 「回復した」メッセージを描く
+
 	bool SaveGame(void);						// セーブする（成功したらtrue）
 	void StartBattle(int monsterId, int level);	// バトルシーンを積む
 	void StartStory(const std::string& scriptPath);	// ストーリー（ノベルパート）を再生する
@@ -137,6 +142,10 @@ private:
 	std::set<int> autoFired_;			// このマップ訪問中に、もう動いた AUTO イベントのID
 	int lastEventTileX_ = -1;			// 前回調べたときのプレイヤーのマス（TOUCH の判定用）
 	int lastEventTileY_ = -1;
+
+	// 回復スポット
+	std::array<int, 20> healSpotFrames_{};		// アニメーションのコマ（5列x4行=20コマ）。読み込めなければ -1
+	int healMessageTimer_ = 0;					// 「回復した」メッセージの残りフレーム数
 
 	// 全滅演出
 	DefeatPhase defeatPhase_ = DefeatPhase::NONE;

@@ -1,6 +1,7 @@
 ﻿#include "BattleScene.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <DxLib.h>
 #include "../SceneManager.h"
 #include "../PauseScene/PauseScene.h"
@@ -34,6 +35,35 @@ namespace
 	bool IsDown(InputManager* in)		// 下：↓ / S
 	{
 		return in->IsTrgDown(KEY_INPUT_DOWN) || in->IsTrgDown(KEY_INPUT_S);
+	}
+
+	// スプライトシートを1コマずつに分割して読み込む（keyごとにキャッシュ）。画像なし・読み込み失敗ならnullptr
+	const std::vector<int>* LoadSheetCached(std::unordered_map<int, std::vector<int>>& cache, int key,
+		const std::string& path, int columns, int frameCount, int frameW, int frameH)
+	{
+		if (key <= 0 || path.empty() || frameW <= 0 || frameH <= 0)
+		{
+			return nullptr;
+		}
+
+		auto it = cache.find(key);
+		if (it != cache.end())
+		{
+			return it->second.empty() ? nullptr : &it->second;
+		}
+
+		const int cols = std::max(1, columns);
+		const int count = std::max(1, frameCount);
+		const int rows = (count + cols - 1) / cols;
+		std::vector<int> handles(count, -1);
+		if (LoadDivGraph(path.c_str(), count, cols, rows, frameW, frameH, handles.data()) == -1)
+		{
+			handles.clear();	// 読み込み失敗：エフェクトなしで進める
+		}
+
+		std::vector<int>& slot = cache[key];
+		slot = std::move(handles);
+		return slot.empty() ? nullptr : &slot;
 	}
 
 	const int RANK_MAX = 6;
@@ -103,6 +133,7 @@ void BattleScene::SetPlayerSprite(const std::string& path, int frames, int colum
 void BattleScene::Init(void)
 {
 	sendOut_ = {};
+	catch_ = {};
 	hidden_ = { false, false };
 	steps_.clear();
 	learnQueue_.clear();
@@ -111,7 +142,6 @@ void BattleScene::Init(void)
 	evolveBegun_ = false;
 	needSwitch_ = false;
 	runAttempts_ = 0;
-	enemyInBall_ = false;
 	bagList_.clear();
 	usingItemId_ = 0;
 	itemTarget_ = 0;
@@ -163,6 +193,15 @@ void BattleScene::Init(void)
 	hidden_[PLAYER] = true;
 	hidden_[ENEMY] = (trainer_ != nullptr);
 
+	// トレーナー戦：モンスターを出す前に、トレーナーの立ち絵を出す
+	trainerImg_ = -1;
+	showTrainer_ = false;
+	if (trainer_ != nullptr)
+	{
+		trainerImg_ = LoadTrainerPortrait(trainer_->imagePath);
+		showTrainer_ = (trainerImg_ != -1);
+	}
+
 	// 開始メッセージ
 	if (trainer_ != nullptr)
 	{
@@ -173,6 +212,7 @@ void BattleScene::Init(void)
 		}
 		Push([this]()
 			{
+				showTrainer_ = false;	// ここで立ち絵は消える（ボールを投げる演出へ）
 				Say(trainer_->name + "は " + enemy_.nickname + "を くりだした！");
 				StartSendOut(ENEMY);
 			});
@@ -201,6 +241,7 @@ void BattleScene::Update(void)
 {
 	UpdateMoveAnim();
 	UpdateSendOut();
+	UpdateCatch();
 	UpdateHpBars();
 
 	// ポーズ画面を積む
@@ -214,7 +255,7 @@ void BattleScene::Update(void)
 	{
 	case Phase::MESSAGE:
 		// 技・ボールの演出中はEnterを受け付けない（演出が終わってから次へ進める）
-		if (!moveAnim_.active && !sendOut_.active && IsConfirm(InputManager::GetInstance()))
+		if (!moveAnim_.active && !sendOut_.active && !catch_.active && IsConfirm(InputManager::GetInstance()))
 		{
 			RunNextStep();
 		}
@@ -276,7 +317,7 @@ void BattleScene::Draw(void)
 	// ボールから出てくるまでは描かない（出てくる最中は DrawSendOut が描く）
 	for (int side : { ENEMY, PLAYER })
 	{
-		if (side == ENEMY && enemyInBall_)
+		if (side == ENEMY && catch_.active)
 		{
 			continue;
 		}
@@ -287,8 +328,10 @@ void BattleScene::Draw(void)
 			DrawMonsterImage(side, cx, bottom, size);
 		}
 	}
+	DrawCatch();	// 捕まえる演出
 	DrawSendOut();	// ボールの演出
 	DrawMoveAnim();	// 技エフェクト（ステータス枠より下に描く）
+	DrawTrainerPortrait();	// トレーナーの立ち絵（戦闘の最初と、勝ったあと）
 
 	// 敵（左上）とプレイヤー（右下）の情報
 	if (!hidden_[ENEMY])
@@ -364,6 +407,18 @@ void BattleScene::Release(void)
 		}
 	}
 	ballFrames_.clear();
+	for (auto& pair : catchFrames_)
+	{
+		for (int h : pair.second)
+		{
+			if (h != -1)
+			{
+				DeleteGraph(h);
+			}
+		}
+	}
+	catchFrames_.clear();
+	catch_ = {};
 	for (int h : playerSprite_)
 	{
 		if (h != -1)
@@ -642,7 +697,7 @@ void BattleScene::UseItem(int itemId, int partyIndex)
 	switch (item->effect)
 	{
 	case ItemEffect::CATCH:
-		TryCatch(item->effectValue / 100.0, item->name);
+		TryCatch(itemId, item->effectValue / 100.0, item->name);
 		return;
 
 	case ItemEffect::ATK_UP:
@@ -698,12 +753,11 @@ void BattleScene::RefreshBagList(void)
 //  捕獲値 a = (3*最大HP - 2*現在HP) * 捕獲率 * ボール補正 * 状態異常補正 / (3*最大HP)
 //  a >= 255 なら確定で捕獲。そうでなければ4回のゆれ判定をすべて通れば捕獲。
 //  捕獲率は 1〜255 の想定（MonsterMaster.csv の値）。
-void BattleScene::TryCatch(double ballRate, const std::string& ballName)
+void BattleScene::TryCatch(int itemId, double ballRate, const std::string& ballName)
 {
 	Combatant& e = side_[ENEMY];
 	const std::string name = e.mon->nickname;
 
-	enemyInBall_ = true;
 	Say(ballName + "を なげた！");
 
 	const double maxHp = std::max(1, MonsterParty::GetMaxHp(*data_, *e.mon));
@@ -741,11 +795,8 @@ void BattleScene::TryCatch(double ballRate, const std::string& ballName)
 		shakes = std::min(shakes, 3);
 	}
 
-	// ゆれの演出
-	for (int i = 0; i < shakes; i++)
-	{
-		PushSay(i == 0 ? "ボールが ゆれた…" : "…ゆれた…");
-	}
+	// ボールを投げて捕まえる演出（ゆれる回数もここで見せる。終わるまでEnterは効かない）
+	StartCatch(itemId, shakes, caught);
 
 	if (caught)
 	{
@@ -765,12 +816,7 @@ void BattleScene::TryCatch(double ballRate, const std::string& ballName)
 		"ざんねん！ あと すこしだったのに！",
 		"おしい！ もうすこしで つかまえられたのに！",
 	};
-	std::string msg = failMsg[shakes];
-	Push([this, msg]()
-		{
-			enemyInBall_ = false;	// ボールから出てくる
-			Say(msg);
-		});
+	PushSay(failMsg[shakes]);	// 出てきたあとのメッセージ
 }
 
 void BattleScene::ExecMove(int atk, int slot)
@@ -1567,6 +1613,116 @@ int BattleScene::LoadMonsterImage(const std::string& path)
 	return handle;
 }
 
+// Trainer.csv の画像指定から、立ち絵に使う1枚（下向き・立ち）を読み込む
+//   フォルダ指定（末尾が / ）… Idle.png
+//   ken.png@3x4 … 2行目（下向き）の先頭コマ / ken.png@4 … 左から2番目（下向き）
+//   上|下|左|右 … 「下」の画像（@N なら先頭コマ） / ken.png … その1枚
+int BattleScene::LoadTrainerPortrait(const std::string& spec)
+{
+	if (spec.empty())
+	{
+		return -1;
+	}
+
+	const std::string key = "trainer:" + spec;
+	auto it = images_.find(key);
+	if (it != images_.end())
+	{
+		return it->second;
+	}
+
+	int result = -1;
+
+	// フォルダ指定
+	if (spec.back() == '/' || spec.back() == '\\')
+	{
+		result = LoadGraph((spec + "Idle.png").c_str());
+		images_[key] = result;
+		return result;
+	}
+
+	// 向きごと指定のときは「下」（2番目）だけを使う
+	std::string one = spec;
+	const size_t bar = spec.find('|');
+	if (bar != std::string::npos)
+	{
+		const size_t next = spec.find('|', bar + 1);
+		one = spec.substr(bar + 1, (next == std::string::npos) ? std::string::npos : next - bar - 1);
+		if (one.empty())
+		{
+			images_[key] = -1;
+			return -1;
+		}
+	}
+
+	// 末尾の @3x4 / @4 / @3 を読む
+	std::string path = one;
+	int cols = 1;
+	int rows = 0;
+	const size_t at = one.rfind('@');
+	if (at != std::string::npos)
+	{
+		path = one.substr(0, at);
+		const std::string suffix = one.substr(at + 1);
+		const size_t x = suffix.find('x');
+		cols = std::max(1, std::atoi(suffix.substr(0, x).c_str()));
+		rows = (x == std::string::npos) ? 0 : std::atoi(suffix.substr(x + 1).c_str());
+	}
+
+	if (cols == 1 && rows == 0)
+	{
+		result = LoadGraph(path.c_str());	// 1枚だけ
+	}
+	else
+	{
+		// 分割して、使う1コマだけ残す（ほかのハンドルは消す）
+		const int rowCount = (rows > 0) ? rows : 1;
+		const int whole = LoadGraph(path.c_str());
+		if (whole != -1)
+		{
+			int w = 0, h = 0;
+			GetGraphSize(whole, &w, &h);
+			DeleteGraph(whole);
+
+			std::vector<int> handles(static_cast<size_t>(cols) * rowCount, -1);
+			if (w >= cols && h >= rowCount
+				&& LoadDivGraph(path.c_str(), cols * rowCount, cols, rowCount, w / cols, h / rowCount, handles.data()) != -1)
+			{
+				// 3x4 … 下向きは2行目の先頭。@4 … 左から2番目。
+				const size_t use = (rows == 4) ? static_cast<size_t>(1) * cols : (cols == 4 ? 1 : 0);
+				result = handles[use];
+				for (size_t i = 0; i < handles.size(); i++)
+				{
+					if (i != use && handles[i] != -1)
+					{
+						DeleteGraph(handles[i]);
+					}
+				}
+			}
+		}
+	}
+
+	images_[key] = result;
+	return result;
+}
+
+// トレーナーの立ち絵を、相手モンスターの位置に描く（ドット絵なのでにじませず拡大する）
+void BattleScene::DrawTrainerPortrait(void) const
+{
+	if (!showTrainer_ || trainerImg_ == -1)
+	{
+		return;
+	}
+
+	int cx = 0, bottom = 0, size = 0;
+	GetMonsterLayout(ENEMY, cx, bottom, size);
+
+	const int prevMode = GetDrawMode();	// 元の設定に戻せるように覚えておく
+	SetDrawMode(DX_DRAWMODE_NEAREST);
+	DrawImageFit(trainerImg_, cx, bottom, size);
+	SetDrawMode(prevMode);
+}
+
 // =============================================================
 // 入力
 // =============================================================
@@ -2045,7 +2201,8 @@ void BattleScene::DrawMessageBox(const std::string& text) const
 	DrawBox(SX(4), SY(364), screenW_ - SX(4), screenH_ - SY(4), GetColor(60, 60, 60), FALSE);
 	DrawFormatString(SX(24), SY(384), GetColor(0, 0, 0), "%s", text.c_str());
 
-	if (phase_ == Phase::MESSAGE || phase_ == Phase::END)
+	if ((phase_ == Phase::MESSAGE || phase_ == Phase::END)
+		&& !moveAnim_.active && !sendOut_.active && !catch_.active)
 	{
 		DrawString(SX(600), SY(450), "▼", GetColor(0, 0, 0));
 	}
@@ -2325,6 +2482,12 @@ void BattleScene::SendNextEnemy(void)
 
 void BattleScene::OnTrainerDefeated(void)
 {
+	// 倒れた相手モンスターと情報枠を消して、代わりにトレーナーの立ち絵を出す
+	if (trainerImg_ != -1)
+	{
+		hidden_[ENEMY] = true;
+		showTrainer_ = true;
+	}
 	Say(trainer_->name + "との しょうぶに かった！");
 	if (!trainer_->defeatMessage.empty())
 	{
@@ -2362,28 +2525,8 @@ void BattleScene::GetMonsterLayout(int side, int& cx, int& bottomY, int& size) c
 // ボールが開いたときのエフェクトシートを分割して読み込む。画像なし・失敗ならnullptr
 const std::vector<int>* BattleScene::LoadBallFrames(const BallEffectMaster& ball)
 {
-	if (ball.id <= 0 || ball.effectImage.empty() || ball.frameW <= 0 || ball.frameH <= 0)
-	{
-		return nullptr;
-	}
-
-	auto it = ballFrames_.find(ball.id);
-	if (it != ballFrames_.end())
-	{
-		return it->second.empty() ? nullptr : &it->second;
-	}
-
-	std::vector<int> handles(ball.frameCount, -1);
-	const int rows = (ball.frameCount + ball.columns - 1) / ball.columns;
-	if (LoadDivGraph(ball.effectImage.c_str(), ball.frameCount, ball.columns, rows,
-		ball.frameW, ball.frameH, handles.data()) == -1)
-	{
-		handles.clear();	// 読み込み失敗：簡易フラッシュで進める
-	}
-
-	std::vector<int>& slot = ballFrames_[ball.id];
-	slot = std::move(handles);
-	return slot.empty() ? nullptr : &slot;
+	return LoadSheetCached(ballFrames_, ball.id, ball.effectImage, ball.columns,
+		ball.frameCount, ball.frameW, ball.frameH);
 }
 
 void BattleScene::StartSendOut(int side)
@@ -2491,10 +2634,8 @@ void BattleScene::UpdateSendOut(void)
 }
 
 // ボール1個を描く。画像が無いときは赤い円で代用する
-void BattleScene::DrawBallSprite(int x, int y, int size, double angle, int alpha, bool opened) const
+void BattleScene::DrawBallSprite(int x, int y, int size, double angle, int alpha, int img) const
 {
-	const int img = opened ? sendOut_.openImg : sendOut_.ballImg;
-
 	SetDrawBlendMode(DX_BLENDMODE_ALPHA, std::max(0, std::min(alpha, 255)));
 	if (img != -1)
 	{
@@ -2574,7 +2715,7 @@ void BattleScene::DrawSendOut(void) const
 		// 山なりに飛んで、くるくる回る
 		const int x = startX + static_cast<int>((landX - startX) * t);
 		const int y = startY + static_cast<int>((landY - startY) * t - SY(90) * 4.0f * t * (1.0f - t));
-		DrawBallSprite(x, y, ballSize, s.timer * 0.5, 255, false);
+		DrawBallSprite(x, y, ballSize, s.timer * 0.5, 255, s.ballImg);
 		break;
 	}
 
@@ -2585,7 +2726,7 @@ void BattleScene::DrawSendOut(void) const
 		const float u = static_cast<float>(s.timer % SENDOUT_BOUNCE_FRAMES) / SENDOUT_BOUNCE_FRAMES;
 		const float height = SY(36) * std::pow(0.55f, static_cast<float>(k));
 		const int y = landY - static_cast<int>(height * 4.0f * u * (1.0f - u));
-		DrawBallSprite(landX, y, ballSize, SENDOUT_THROW_FRAMES * 0.5 + s.timer * 0.1, 255, false);
+		DrawBallSprite(landX, y, ballSize, SENDOUT_THROW_FRAMES * 0.5 + s.timer * 0.1, 255, s.ballImg);
 		break;
 	}
 
@@ -2596,7 +2737,7 @@ void BattleScene::DrawSendOut(void) const
 		const int ey = bottom - size / 2;
 
 		const int ballAlpha = (t < 0.3f) ? 255 : static_cast<int>(255 * (1.0f - (t - 0.3f) / 0.7f));
-		DrawBallSprite(landX, landY, ballSize, SENDOUT_THROW_FRAMES * 0.5, ballAlpha, true);
+		DrawBallSprite(landX, landY, ballSize, SENDOUT_THROW_FRAMES * 0.5, ballAlpha, s.openImg);
 
 		if (s.effectFrames != nullptr && !s.effectFrames->empty())
 		{
@@ -2636,6 +2777,350 @@ void BattleScene::DrawSendOut(void) const
 		DrawImageFit(img, cx, curBottom, curSize);
 		SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
 		SetDrawBright(255, 255, 255);
+		break;
+	}
+	}
+}
+
+// =============================================================
+// 捕まえる演出（投げる → 吸い込む → 落ちる → ゆれる → 成功／失敗）
+// ボールごとの見た目は BallEffect.csv で変えられる。
+//   ・吸い込みと、失敗して出てくるときは、モンスターを出す演出と同じエフェクト（effectImage）を使う
+//   ・捕まえたときの光は catchImage（空なら簡易の星と光の輪）
+// =============================================================
+
+// このアイテムで投げるボールの設定を決める
+//   BallEffect.csv の id にアイテムIDを書くと、そのボールを投げたときの演出になる。
+//   無ければ SetBall で決めたボール、それも無ければ仮のボール。
+const BallEffectMaster* BattleScene::GetCatchBall(int itemId) const
+{
+	const BallEffectMaster* ball = ballData_.Get(itemId);
+	if (ball == nullptr)
+	{
+		ball = ballData_.Get(playerBallId_);
+	}
+	return (ball != nullptr) ? ball : &defaultBall_;
+}
+
+// 捕まえたときの光のシートを読み込む。画像なし・失敗ならnullptr
+const std::vector<int>* BattleScene::LoadCatchFrames(const BallEffectMaster& ball)
+{
+	return LoadSheetCached(catchFrames_, ball.id, ball.catchImage, ball.catchColumns,
+		ball.catchFrameCount, ball.catchFrameW, ball.catchFrameH);
+}
+
+// ボールが開いたときのエフェクトを描く。画像があればそのシート、無ければ広がるフラッシュ
+//   (x, y)＝中心 / timer＝このステージの経過フレーム / t＝進み具合（0〜1） / size＝モンスターの大きさ
+void BattleScene::DrawOpenEffect(int x, int y, int timer, float t, int size,
+	const std::vector<int>* frames, const BallEffectMaster& ball) const
+{
+	if (frames != nullptr && !frames->empty())
+	{
+		const int index = std::min(static_cast<int>(frames->size()) - 1, timer / ball.frameTime);
+		const double scale = ball.scalePercent / 100.0 * screenH_ / BASE_H;
+		if (ball.additive)
+		{
+			SetDrawBlendMode(DX_BLENDMODE_ADD, 255);
+		}
+		DrawRotaGraph(x, y, scale, 0.0, (*frames)[index], TRUE);
+		SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+		return;
+	}
+
+	// エフェクト画像が無いときの簡易フラッシュ（広がりながら消える）
+	const int radius = SY(20) + static_cast<int>(size * 0.6f * t);
+	SetDrawBlendMode(DX_BLENDMODE_ADD, static_cast<int>(220 * (1.0f - t)));
+	DrawCircle(x, y, radius, GetColor(ball.glowR, ball.glowG, ball.glowB), TRUE);
+	SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+}
+
+// ボールを投げて捕まえる演出を始める
+//   shakes＝ゆれる回数（0〜3）、caught＝捕まえられたか（どちらも捕獲判定の結果）
+void BattleScene::StartCatch(int itemId, int shakes, bool caught)
+{
+	const BallEffectMaster* ball = GetCatchBall(itemId);
+
+	catch_ = {};
+	catch_.active = true;
+	catch_.stage = CatchStage::THROW;
+	catch_.shakes = std::max(0, std::min(shakes, 3));
+	catch_.caught = caught;
+	catch_.ball = ball;
+	catch_.ballImg = LoadMonsterImage(ball->ballImage);
+	catch_.openImg = ball->openImage.empty() ? catch_.ballImg : LoadMonsterImage(ball->openImage);
+	catch_.openFrames = LoadBallFrames(*ball);
+	catch_.catchFrames = LoadCatchFrames(*ball);
+}
+
+int BattleScene::CatchStageFrames(void) const
+{
+	const BallEffectMaster* ball = catch_.ball;
+	switch (catch_.stage)
+	{
+	case CatchStage::THROW:
+		return CATCH_THROW_FRAMES;
+	case CatchStage::ABSORB:
+	case CatchStage::FAIL:
+	{
+		// ボールが開くエフェクトの長さに合わせる（短いときは最低限の長さ）
+		int f = (catch_.stage == CatchStage::ABSORB) ? CATCH_ABSORB_MIN_FRAMES : CATCH_FAIL_MIN_FRAMES;
+		if (ball != nullptr && catch_.openFrames != nullptr)
+		{
+			f = std::max(f, static_cast<int>(catch_.openFrames->size()) * ball->frameTime);
+		}
+		return f;
+	}
+	case CatchStage::DROP:
+		return CATCH_DROP_FRAMES;
+	case CatchStage::SHAKE:
+		return CATCH_SHAKE_WAIT_FRAMES + catch_.shakes * CATCH_SHAKE_FRAMES + CATCH_SHAKE_END_FRAMES;
+	case CatchStage::SUCCESS:
+	{
+		int f = CATCH_SUCCESS_MIN_FRAMES;
+		if (ball != nullptr && catch_.catchFrames != nullptr)
+		{
+			f = std::max(f, static_cast<int>(catch_.catchFrames->size()) * ball->catchFrameTime);
+		}
+		return f;
+	}
+	}
+	return 0;
+}
+
+void BattleScene::UpdateCatch(void)
+{
+	if (!catch_.active)
+	{
+		return;
+	}
+
+	catch_.timer++;
+
+	// 今のステージが終わったら次へ
+	while (catch_.timer >= CatchStageFrames())
+	{
+		catch_.timer = 0;
+		switch (catch_.stage)
+		{
+		case CatchStage::THROW:
+			catch_.stage = CatchStage::ABSORB;
+			break;
+		case CatchStage::ABSORB:
+			hidden_[ENEMY] = true;		// 吸い込まれた：モンスターと情報枠を消す
+			catch_.stage = CatchStage::DROP;
+			break;
+		case CatchStage::DROP:
+			catch_.stage = CatchStage::SHAKE;
+			break;
+		case CatchStage::SHAKE:
+			if (catch_.caught)
+			{
+				catch_.stage = CatchStage::SUCCESS;
+			}
+			else
+			{
+				hidden_[ENEMY] = false;	// 出てくる：情報枠を戻す
+				catch_.stage = CatchStage::FAIL;
+			}
+			break;
+		case CatchStage::SUCCESS:
+			catch_.active = false;
+			catch_.hold = true;			// ボールは地面に残る（シーンが終わるまで）
+			return;
+		case CatchStage::FAIL:
+			catch_ = {};				// 出てきた：ここから通常の描画に戻る
+			return;
+		}
+	}
+}
+
+// 捕まえたときの簡易エフェクト（画像が無いとき）：ボールの色の光の輪と、放射状に広がる星
+void BattleScene::DrawCatchSparkle(int x, int y, float t, const BallEffectMaster& ball) const
+{
+	const unsigned int color = GetColor(ball.glowR, ball.glowG, ball.glowB);
+	const float e = 1.0f - (1.0f - t) * (1.0f - t);		// 出だしが速く、だんだん止まる
+
+	// カチッと閉まった瞬間の光
+	if (t < 0.2f)
+	{
+		SetDrawBlendMode(DX_BLENDMODE_ADD, static_cast<int>(200 * (1.0f - t / 0.2f)));
+		DrawCircle(x, y, SY(22), color, TRUE);
+	}
+
+	SetDrawBlendMode(DX_BLENDMODE_ADD, static_cast<int>(255 * (1.0f - t)));
+
+	// 光の輪
+	DrawCircle(x, y, SY(12) + static_cast<int>(SY(50) * e), color, FALSE, 2);
+
+	// 星（8個）：十字の形で、遠くへ行くほど小さくなる
+	for (int i = 0; i < 8; i++)
+	{
+		const float angle = i * 3.1415926f / 4.0f + 0.4f;
+		const float dist = SY(10) + SY(56) * e * ((i % 2 == 0) ? 1.0f : 0.7f);
+		const int sx = x + static_cast<int>(std::cos(angle) * dist);
+		const int sy = y + static_cast<int>(std::sin(angle) * dist);
+		const int r = std::max(1, static_cast<int>(SY(6) * (1.0f - t)) + 1);
+		DrawLine(sx - r, sy, sx + r, sy, color, 2);
+		DrawLine(sx, sy - r, sx, sy + r, color, 2);
+		DrawCircle(sx, sy, std::max(1, r / 2), color, TRUE);
+	}
+	SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+}
+
+void BattleScene::DrawCatch(void) const
+{
+	const CatchPlay& c = catch_;
+	if ((!c.active && !c.hold) || c.ball == nullptr)
+	{
+		return;
+	}
+	const BallEffectMaster& ball = *c.ball;
+
+	int cx = 0, bottom = 0, size = 0;
+	GetMonsterLayout(ENEMY, cx, bottom, size);
+
+	const int centerY = bottom - size / 2;	// モンスターの中心（ボールが当たる場所）
+	const int landY = bottom - SY(12);		// ボールが落ちる地面
+	const int ballSize = SY(ball.ballSize);
+
+	// 捕まえたあと：ボールは暗くなって地面に残る
+	if (c.hold)
+	{
+		SetDrawBright(150, 150, 150);
+		DrawBallSprite(cx, landY, ballSize, 0.0, 255, c.ballImg);
+		SetDrawBright(255, 255, 255);
+		return;
+	}
+
+	const int total = std::max(1, CatchStageFrames());
+	const float t = std::min(1.0f, static_cast<float>(c.timer) / total);
+	const int enemyImg = side_[ENEMY].image;
+
+	// モンスターを描く（glowAlpha＝ボールの色で光らせる強さ 0〜255）
+	auto drawMonster = [&](int bottomY, int sz, int glowAlpha)
+		{
+			DrawImageFit(enemyImg, cx, bottomY, sz);
+			if (glowAlpha > 0)
+			{
+				SetDrawBlendMode(DX_BLENDMODE_ADD, std::min(255, glowAlpha));
+				SetDrawBright(ball.glowR, ball.glowG, ball.glowB);
+				DrawImageFit(enemyImg, cx, bottomY, sz);
+				SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+				SetDrawBright(255, 255, 255);
+			}
+		};
+
+	switch (c.stage)
+	{
+	case CatchStage::THROW:
+	{
+		// モンスターはそのまま。ボールが手前（左下）から山なりに飛んできて、くるくる回る
+		DrawMonsterImage(ENEMY, cx, bottom, size);
+		const int startX = SX(110);
+		const int startY = SY(250);
+		const int x = startX + static_cast<int>((cx - startX) * t);
+		const int y = startY + static_cast<int>((centerY - startY) * t - SY(90) * 4.0f * t * (1.0f - t));
+		DrawBallSprite(x, y, ballSize, c.timer * 0.6, 255, c.ballImg);
+		break;
+	}
+
+	case CatchStage::ABSORB:
+	{
+		// ボールが開いて、モンスターが光になって吸い込まれ、最後にボールが閉じる
+		const float k = std::max(0.0f, std::min(1.0f, (t - 0.15f) / 0.6f));
+		const float e = k * k;		// 後半ほど速く吸い込まれる
+		if (k < 1.0f)
+		{
+			const int curSize = std::max(2, static_cast<int>(size * (1.0f - e)));
+			const int curBottom = bottom + static_cast<int>((centerY - bottom) * e);
+			drawMonster(curBottom, curSize, static_cast<int>(255 * e));
+		}
+		DrawBallSprite(cx, centerY, ballSize, 0.0, 255, (t < 0.75f) ? c.openImg : c.ballImg);
+		DrawOpenEffect(cx, centerY, c.timer, std::min(1.0f, t / 0.5f), size, c.openFrames, ball);
+		break;
+	}
+
+	case CatchStage::DROP:
+	{
+		// 落ちて、1回バウンドする
+		int y = landY;
+		if (c.timer < CATCH_FALL_FRAMES)
+		{
+			const float u = static_cast<float>(c.timer) / CATCH_FALL_FRAMES;
+			y = centerY + static_cast<int>((landY - centerY) * u * u);
+		}
+		else
+		{
+			const float u = static_cast<float>(c.timer - CATCH_FALL_FRAMES)
+				/ std::max(1, CATCH_DROP_FRAMES - CATCH_FALL_FRAMES);
+			y = landY - static_cast<int>(SY(24) * 4.0f * u * (1.0f - u));
+		}
+		DrawBallSprite(cx, y, ballSize, 0.0, 255, c.ballImg);
+		break;
+	}
+
+	case CatchStage::SHAKE:
+	{
+		// 地面でゆれる（1回ごとに左右へ傾いて、もとに戻る。回ごとに向きが入れ替わる）
+		double angle = 0.0;
+		const int local = c.timer - CATCH_SHAKE_WAIT_FRAMES;
+		if (local >= 0)
+		{
+			const int k = local / CATCH_SHAKE_FRAMES;
+			if (k < c.shakes)
+			{
+				const float u = static_cast<float>(local % CATCH_SHAKE_FRAMES) / CATCH_SHAKE_FRAMES;
+				if (u < 0.6f)
+				{
+					angle = 0.45 * std::sin(u / 0.6f * 6.2831853f) * ((k % 2 == 0) ? 1.0 : -1.0);
+				}
+			}
+		}
+		const int x = cx + static_cast<int>(angle * ballSize * 0.5);
+		DrawBallSprite(x, landY, ballSize, angle, 255, c.ballImg);
+		break;
+	}
+
+	case CatchStage::SUCCESS:
+	{
+		// カチッ：ボールが光って、星が広がる。そのあとボールは少し暗くなる（捕まえた印）
+		const int bright = 255 - static_cast<int>(105 * std::min(1.0f, t * 2.0f));
+		SetDrawBright(bright, bright, bright);
+		DrawBallSprite(cx, landY, ballSize, 0.0, 255, c.ballImg);
+		SetDrawBright(255, 255, 255);
+
+		if (c.catchFrames != nullptr && !c.catchFrames->empty())
+		{
+			const int index = std::min(static_cast<int>(c.catchFrames->size()) - 1, c.timer / ball.catchFrameTime);
+			const double scale = ball.catchScalePercent / 100.0 * screenH_ / BASE_H;
+			if (ball.additive)
+			{
+				SetDrawBlendMode(DX_BLENDMODE_ADD, 255);
+			}
+			DrawRotaGraph(cx, landY, scale, 0.0, (*c.catchFrames)[index], TRUE);
+			SetDrawBlendMode(DX_BLENDMODE_NOBLEND, 0);
+		}
+		else
+		{
+			DrawCatchSparkle(cx, landY, t, ball);
+		}
+		break;
+	}
+
+	case CatchStage::FAIL:
+	{
+		// ボールが開いて、モンスターが出てくる（モンスターを出す演出と同じ）
+		const float k = std::max(0.0f, (t - 0.25f) / 0.75f);
+		if (k > 0.0f)
+		{
+			const float e = 1.0f - (1.0f - k) * (1.0f - k);
+			const int curSize = std::max(4, static_cast<int>(size * e));
+			const int curBottom = landY + static_cast<int>((bottom - landY) * e);
+			drawMonster(curBottom, curSize, static_cast<int>(255 * (1.0f - k)));
+		}
+		const int ballAlpha = (t < 0.3f) ? 255 : static_cast<int>(255 * (1.0f - (t - 0.3f) / 0.7f));
+		DrawBallSprite(cx, landY, ballSize, 0.0, ballAlpha, c.openImg);
+		DrawOpenEffect(cx, centerY, c.timer, std::min(1.0f, t / 0.5f), size, c.openFrames, ball);
 		break;
 	}
 	}

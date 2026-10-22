@@ -19,6 +19,7 @@ void TitleScene::Init(void)
 
 void TitleScene::Load(void)
 {
+	image_ = LoadGraph("Data/Image/UI/Title/Title.png");
 }
 
 void TitleScene::LoadEnd(void)
@@ -43,7 +44,14 @@ void TitleScene::Update(void)
 
 void TitleScene::Draw(void)
 {
-	DrawBox(0, 0, 640, 480, GetColor(255, 0, 255), TRUE);
+	if (image_ >= 0)
+	{
+		DrawGraph(0, 0, image_, TRUE);
+	}
+	else
+	{
+		DrawBox(0, 0, 640, 480, GetColor(255, 0, 255), TRUE);
+	}
 }
 
 void TitleScene::Release(void)

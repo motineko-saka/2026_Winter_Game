@@ -97,6 +97,13 @@ bool BallEffectData::Load(const std::string& path)
 		b.glowR = ToInt(c, 14, 255);
 		b.glowG = ToInt(c, 15, 255);
 		b.glowB = ToInt(c, 16, 255);
+		b.catchImage = ToStr(c, 17);
+		b.catchColumns = std::max(1, ToInt(c, 18, 1));
+		b.catchFrameCount = std::max(1, ToInt(c, 19, 1));
+		b.catchFrameW = ToInt(c, 20, 0);
+		b.catchFrameH = ToInt(c, 21, 0);
+		b.catchFrameTime = std::max(1, ToInt(c, 22, 3));
+		b.catchScalePercent = ToInt(c, 23, 100);
 		balls_[b.id] = b;
 	}
 	return !balls_.empty();

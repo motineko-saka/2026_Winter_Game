@@ -37,6 +37,10 @@ void NovelScene::Init(void)
 	// キーボード操作のみ（マウスは使わない）
 	novel_.cfg.useMouse = false;
 
+	// 画面サイズに合わせる
+	novel_.cfg.charaDir = "Data/Image/Character";
+	novel_.cfg.choiceDir = "Data/Image/Monster/nobel";
+
 	// ゲーム全体のフラグを、台本の $名前 から使えるようにする
 	if (flags_ != nullptr)
 	{

@@ -30,12 +30,25 @@ struct BallEffectMaster
 	int glowR = 255;
 	int glowG = 255;
 	int glowB = 255;
+
+	// 捕まえたときの光のエフェクト（スプライトシート）。空なら簡易の星と光の輪
+	std::string catchImage;
+	int catchColumns = 1;
+	int catchFrameCount = 1;
+	int catchFrameW = 0;
+	int catchFrameH = 0;
+	int catchFrameTime = 3;
+	int catchScalePercent = 100;
 };
 
 // ボール演出のマスターデータ（CSVから読み込む）
 //
 // CSV形式（1行目はヘッダー、#で始まる行はコメント）
-//   id,name,ballImage,openImage,ballSize,bounces,effectImage,columns,frameCount,frameW,frameH,frameTime,scalePercent,additive,glowR,glowG,glowB
+//   id,name,ballImage,openImage,ballSize,bounces,effectImage,columns,frameCount,frameW,frameH,frameTime,scalePercent,additive,glowR,glowG,glowB,
+//     catchImage,catchColumns,catchFrameCount,catchFrameW,catchFrameH,catchFrameTime,catchScalePercent
+//   ・捕まえる演出では、id にボールのアイテムIDを書くと、そのボールを投げたときの演出になる
+//   ・捕まえるときの吸い込みと、失敗して出てくるときは、effectImage（モンスターを出す演出と同じ）を使う
+//   ・追加した列（catch〜）は空欄でも動く（簡易の星と光の輪になる）
 class BallEffectData
 {
 public:

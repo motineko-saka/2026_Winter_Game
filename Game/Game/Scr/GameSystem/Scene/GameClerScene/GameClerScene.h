@@ -20,4 +20,5 @@ public:
 
 private:
 
+	int timer_ = 0;
 };

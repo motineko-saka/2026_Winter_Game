@@ -1,4 +1,4 @@
-?// プロローグ（サンプル）
+// プロローグ（サンプル）
 // 文字コードは DxLib の設定に合わせること（UTF-8 設定なら UTF-8、既定なら Shift-JIS で保存）
 // 図鑑番号は自分の MonsterMaster.csv に合わせて書き換えてください
 // 素材が無くても落ちません（出力ウィンドウに [novel] の警告が出るだけ）
@@ -10,11 +10,11 @@
 #
 朝の光が差し込んでいる。\n今日は、旅立ちの日だ。
 
+@chara hakase hakase right
 #博士
 よく来たな。\n最初のパートナーを選んでくれ。
 
-@choice "風タイプの子" wind "炎タイプの子" fire "水タイプの子" water
-
+@choicecard "風タイプのシルフ" wind 001_flont "炎タイプのルファウ" fire 004_flont "水タイプのウィリュウ" water 007_flont
 *wind
 @give 1 5
 @set starter = 1
@@ -34,6 +34,7 @@
 #博士
 いい選択だ。\nさっそく、草むらで練習してみよう。
 
+@hide hakase
 #
 野生のモンスターが飛び出してきた！
 
@@ -43,15 +44,15 @@
 @if starter == 3 enemy_fire
 
 *enemy_water
-@battle 7 3
+@battle 7 5
 @jump afterbattle
 
 *enemy_wind
-@battle 1 3
+@battle 1 5
 @jump afterbattle
 
 *enemy_fire
-@battle 4 3
+@battle 4 5
 @jump afterbattle
 
 *afterbattle
@@ -62,22 +63,26 @@
 @jump escaped
 
 *won
+@chara hakase hakase right
 #博士
 見事だ！ 君ならきっと、いい旅ができる。
 @jump fin
 
 *caught
+@chara hakase hakase right
 #博士
 おお、捕まえるとは！ 大したものだ。
 @jump fin
 
 *lost
+@chara hakase hakase right
 @heal
 #博士
 無理は禁物だ。\n手持ちを回復しておいたよ。
 @jump fin
 
 *escaped
+@chara hakase hakase right
 #博士
 逃げるのも立派な判断だ。
 @jump fin
@@ -85,4 +90,5 @@
 *fin
 #博士
 では、行ってきなさい。
+@hide hakase
 @end

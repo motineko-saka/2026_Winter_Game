@@ -10,6 +10,7 @@
 #include "../TitleScene/TitleScene.h"
 #include "../BattleScene/BattleScene.h"
 #include "../MapScene/MapScene.h"
+#include "../GameClerScene/GameClerScene.h"
 #include "../NovelScene/NovelScene.h"
 #include "../../../AppSystem/InputManager/InputManager.h"
 #include "../../Object/Player/Player.h"
@@ -39,6 +40,54 @@ namespace
 
 	// 歩きのコマを切り替えるピクセル数（これだけ歩くごとに次のコマ）
 	const int TRAINER_WALK_ANIM_PIXELS = 12;
+
+	// トレーナー画像を描く倍率（1.0 = 画像そのままの大きさ。プレイヤーと同じ大きさにしたいときは 1.0）
+	// プレイヤーより大きい／小さいときは、ここを変える（例：プレイヤーが画像の1.5倍なら 1.5）
+	const double TRAINER_DRAW_SCALE = 1.0;
+
+	// ---------- 回復スポット ----------
+	// 画像（5列x4行・1コマ480x480 のアニメーション）。Data/Image/Effect/ に置く
+	const char* HEAL_SPOT_IMAGE = "Data/Image/Effect/obje.png";
+	const int HEAL_SPOT_COLS = 5;
+	const int HEAL_SPOT_ROWS = 4;
+	const int HEAL_SPOT_FRAME_SIZE = 480;		// 1コマの大きさ（ピクセル）
+	const int HEAL_SPOT_FRAME_MS = 60;			// 1コマを出す時間（ミリ秒）
+
+	// 置く場所：最初のマップ（ステージID 0）の、このマス
+	// ※デバッグ表示の Tile=(x,y) を見ながら、通れる場所に合わせて変える
+	const int HEAL_SPOT_STAGE_ID = 1;
+	const int HEAL_SPOT_TILE_X = 8;
+	const int HEAL_SPOT_TILE_Y = 17;
+
+	// 描く大きさ（タイル何枚分の幅か）。画像は余白が広いので、小さめでも十分に見える
+	const double HEAL_SPOT_DRAW_TILES = 2.0;
+
+	// 「回復した」メッセージを出しておくフレーム数
+	const int HEAL_MESSAGE_FRAMES = 120;
+
+	// ---------- ゲームクリア（α版） ----------
+	// このトレーナー（Trainer.csv の id）に勝ったらゲームクリア
+	const int CLEAR_TRAINER_ID = 1;
+
+	// 画像をタイルの中央に、TRAINER_DRAW_SCALE の大きさで描く（mirror = 左右反転）
+	void DrawTrainerImage(int img, int tileX, int tileY, int csx, int csy, bool mirror)
+	{
+		int w = 0;
+		int h = 0;
+		GetGraphSize(img, &w, &h);
+		const int dw = static_cast<int>(w * TRAINER_DRAW_SCALE);
+		const int dh = static_cast<int>(h * TRAINER_DRAW_SCALE);
+		const int x0 = tileX + (csx - dw) / 2;
+		const int y0 = tileY + (csy - dh) / 2;
+		if (mirror)
+		{
+			DrawExtendGraph(x0 + dw, y0, x0, y0 + dh, img, true);
+		}
+		else
+		{
+			DrawExtendGraph(x0, y0, x0 + dw, y0 + dh, img, true);
+		}
+	}
 
 	// 「@」以降の指定を読み取る。  "ken.png@4" → 列4、 "ken.png@3x4" → 列3・行4
 	// 指定がない、または書式が違うときは false（path などは変更しない）
@@ -329,6 +378,7 @@ void GameScene::Init(void)
 	money_ = 0;
 	trainerTileOverride_.clear();
 	trainerEventPhase_ = TrainerEventPhase::NONE;
+	healMessageTimer_ = 0;
 
 	// テスト用：Item.csv の ID 1〜5 を5個ずつ持たせる（存在するIDだけ）
 	// ※本番では、ショップや拾得で増える形に差し替える
@@ -361,6 +411,11 @@ void GameScene::Load(void)
 	itemData_.Load();
 	trainerData_.Load();
 	eventData_.Load();
+
+	// 回復スポットの画像（読み込めなかったときは仮の丸で表示される）
+	healSpotFrames_.fill(-1);
+	LoadDivGraph(HEAL_SPOT_IMAGE, HEAL_SPOT_COLS * HEAL_SPOT_ROWS, HEAL_SPOT_COLS, HEAL_SPOT_ROWS,
+		HEAL_SPOT_FRAME_SIZE, HEAL_SPOT_FRAME_SIZE, healSpotFrames_.data());
 }
 
 void GameScene::LoadEnd(void)
@@ -377,6 +432,12 @@ void GameScene::Update(void)
 {
 	// バトルが終わっていたら、結果を受け取って処理する
 	CheckBattleResult();
+
+	// 「回復した」メッセージの表示時間
+	if (healMessageTimer_ > 0)
+	{
+		healMessageTimer_--;
+	}
 
 	// 全滅演出中は操作を受け付けない
 	if (defeatPhase_ != DefeatPhase::NONE)
@@ -449,6 +510,12 @@ void GameScene::Update(void)
 		return;
 	}
 
+	// 回復スポットに話しかけたら全回復
+	if (CheckHealSpot())
+	{
+		return;
+	}
+
 	// エンカウント判定(指定チップを踏んだ時に確率で遭遇)
 	// 戦えるモンスターがいない／バトル結果の処理待ちのときは判定しない
 	if (battle_ == nullptr && monsterParty_.HasAlive())
@@ -479,6 +546,7 @@ void GameScene::Draw(void)
 	StageManager::GetInstance()->Draw();
 	DrawTrainers();
 	DrawEvents();
+	DrawHealSpot();
 	player_->Draw();
 
 #ifdef _DEBUG
@@ -494,6 +562,9 @@ void GameScene::Draw(void)
 			sm->IsBlocked(player_->GetWorldPosX(), player_->GetWorldPosY() + 16.0f) ? 1 : 0);
 	}
 #endif
+
+	// 回復したメッセージ
+	DrawHealMessage();
 
 	// 全滅演出（暗転とメッセージ）
 	DrawDefeat();
@@ -542,6 +613,15 @@ void GameScene::Release(void)
 	trainerData_.Release();
 	eventData_.Release();
 
+	for (int& h : healSpotFrames_)
+	{
+		if (h >= 0)
+		{
+			DeleteGraph(h);
+			h = -1;
+		}
+	}
+
 	inventory_.Release();
 	itemData_.Release();
 	monsterData_.Release();
@@ -552,7 +632,7 @@ void GameScene::StartBattle(int monsterId, int level)
 	battle_ = std::make_shared<BattleScene>();
 	battle_->Setup(&monsterData_, &monsterParty_, monsterId, level);
 	battle_->SetItems(&itemData_, &inventory_);		// バッグを使えるようにする
-	battle_->SetPlayerImages({                      
+	battle_->SetPlayerImages({
 	"Data/Image/Player/1.png",
 	"Data/Image/Player/2.png",
 	"Data/Image/Player/3.png",
@@ -592,6 +672,12 @@ void GameScene::CheckBattleResult(void)
 	{
 		defeatedTrainers_.insert(trainerId);
 		money_ += prize;
+
+		// クリア対象のトレーナーに勝ったら、ゲームクリアへ
+		if (trainerId == CLEAR_TRAINER_ID)
+		{
+			SceneManager::GetInstance()->PushScene(std::make_shared<GameClearScene>());
+		}
 	}
 
 	// 勝ち・逃げた・捕まえた は手持ちやバッグがバトル側で更新済みなので、ここでは何もしない
@@ -803,7 +889,7 @@ void GameScene::StartTrainerBattle(const TrainerSpawn& spawn)
 		"Data/Image/Player/3.png",
 		"Data/Image/Player/4.png",
 		"Data/Image/Player/5.png",
-	});
+		});
 	SceneManager::GetInstance()->PushScene(battle_);
 }
 
@@ -888,6 +974,11 @@ void GameScene::RebuildTrainerBlocks(void)
 			tiles.push_back(std::make_pair(e.tileX, e.tileY));
 		}
 	}
+	// 回復スポットが立っているマスも通れない
+	if (stageId == HEAL_SPOT_STAGE_ID)
+	{
+		tiles.push_back(std::make_pair(HEAL_SPOT_TILE_X, HEAL_SPOT_TILE_Y));
+	}
 	StageManager::GetInstance()->SetExtraBlockTiles(tiles);
 }
 
@@ -931,15 +1022,7 @@ void GameScene::DrawTrainers(void)
 		const int img = PickFrame(sprite.frames[static_cast<int>(s.dir)], walking, eventWalked_);
 		if (img >= 0)
 		{
-			if (sprite.mirror[static_cast<int>(s.dir)])
-			{
-				// 左右反転（x の左右を入れ替えて描く）
-				DrawExtendGraph(x + csx, y, x, y + csy, img, true);
-			}
-			else
-			{
-				DrawExtendGraph(x, y, x + csx, y + csy, img, true);
-			}
+			DrawTrainerImage(img, x, y, csx, csy, sprite.mirror[static_cast<int>(s.dir)]);
 		}
 		else
 		{
@@ -1082,8 +1165,94 @@ void GameScene::DrawEvents(void)
 
 		const int x = Camera2D::GetInstance()->WorldToScreenX(e.tileX * csx);
 		const int y = Camera2D::GetInstance()->WorldToScreenY(e.tileY * csy);
-		DrawExtendGraph(x, y, x + csx, y + csy, img, true);
+		DrawTrainerImage(img, x, y, csx, csy, false);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// 回復スポット
+// ---------------------------------------------------------------------------
+
+bool GameScene::CheckHealSpot(void)
+{
+	StageManager* sm = StageManager::GetInstance();
+	if (sm->GetCurrentStageId() != HEAL_SPOT_STAGE_ID)
+	{
+		return false;
+	}
+
+	const InputManager* input = InputManager::GetInstance();
+	const bool actionKey = input->IsTrgDown(KEY_INPUT_RETURN)
+		|| input->IsTrgDown(KEY_INPUT_SPACE);
+	if (!actionKey)
+	{
+		return false;
+	}
+
+	const int csx = sm->GetChipSizeX();
+	const int csy = sm->GetChipSizeY();
+	if (csx <= 0 || csy <= 0)
+	{
+		return false;
+	}
+
+	// 同じマス、または上下左右の隣にいるときだけ（イベントの ACTION と同じ判定）
+	const int px = player_->GetWorldPosX() / csx;
+	const int py = player_->GetWorldPosY() / csy;
+	if (std::abs(px - HEAL_SPOT_TILE_X) + std::abs(py - HEAL_SPOT_TILE_Y) > 1)
+	{
+		return false;
+	}
+
+	HealParty();
+	healMessageTimer_ = HEAL_MESSAGE_FRAMES;
+	return true;
+}
+
+void GameScene::DrawHealSpot(void)
+{
+	StageManager* sm = StageManager::GetInstance();
+	if (sm->GetCurrentStageId() != HEAL_SPOT_STAGE_ID)
+	{
+		return;
+	}
+
+	const int csx = sm->GetChipSizeX();
+	const int csy = sm->GetChipSizeY();
+
+	// マスの中心（画面上の座標）
+	const int cx = Camera2D::GetInstance()->WorldToScreenX(HEAL_SPOT_TILE_X * csx) + csx / 2;
+	const int cy = Camera2D::GetInstance()->WorldToScreenY(HEAL_SPOT_TILE_Y * csy) + csy / 2;
+
+	// 時間でコマを進める（フレームレートに左右されない）
+	const int frameCount = static_cast<int>(healSpotFrames_.size());
+	const int img = healSpotFrames_[(GetNowCount() / HEAL_SPOT_FRAME_MS) % frameCount];
+
+	if (img < 0)
+	{
+		// 画像が読み込めていない。場所がわかるように仮の丸を描く
+		DrawCircle(cx, cy, csx / 2, 0x6633FF, true);
+		return;
+	}
+
+	const int size = static_cast<int>(csx * HEAL_SPOT_DRAW_TILES);
+	DrawExtendGraph(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2, img, true);
+}
+
+void GameScene::DrawHealMessage(void) const
+{
+	if (healMessageTimer_ <= 0)
+	{
+		return;
+	}
+
+	const int x1 = 40;
+	const int x2 = Application::SCREEN_SIZE_X - 40;
+	const int y1 = Application::SCREEN_SIZE_Y - 120;
+	const int y2 = Application::SCREEN_SIZE_Y - 40;
+	DrawBox(x1, y1, x2, y2, GetColor(255, 255, 255), true);
+	DrawBox(x1, y1, x2, y2, GetColor(0, 0, 0), false);
+	DrawFormatString(x1 + 20, y1 + 30, GetColor(0, 0, 0), "てもちの モンスターが ぜんかいふくした！");
 }
 
 const TrainerSprite& GameScene::GetTrainerSprite(const std::string& spec)
