@@ -159,6 +159,8 @@
     <ClCompile Include="Scr\GameSystem\Scene\MapScene\MapScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\NovelScene\NovelScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\PauseScene\PauseScene.cpp" />
+    <ClCompile Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSlotScene.cpp" />
+    <ClCompile Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneBase.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneManager.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\TitleScene\TitleScene.cpp" />
@@ -201,6 +203,8 @@
     <ClInclude Include="Scr\GameSystem\Scene\NovelScene\Novel.hpp" />
     <ClInclude Include="Scr\GameSystem\Scene\NovelScene\NovelScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\PauseScene\PauseScene.h" />
+    <ClInclude Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSlotScene.h" />
+    <ClInclude Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneBase.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneManager.h" />
     <ClInclude Include="Scr\GameSystem\Scene\TitleScene\TitleScene.h" />

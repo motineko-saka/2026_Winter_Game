@@ -20,5 +20,15 @@ public:
 
 private:
 
+	enum class Menu
+	{
+		NEW_GAME,		// はじめから
+		CONTINUE,		// つづきから
+		MAX
+	};
+
+	void Decide(void);	// 選んだ項目を実行する
+
 	int image_ = -1;
+	int cursor_ = 0;	// 選んでいる項目（Menu の値）
 };

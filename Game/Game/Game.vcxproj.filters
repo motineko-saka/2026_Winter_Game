@@ -120,6 +120,12 @@
     <ClCompile Include="Scr\GameSystem\Object\Monster\BallEffectData.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSlotScene.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Scr\Utility\Utility.h">
@@ -237,6 +243,12 @@
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="Scr\GameSystem\Object\Monster\BallEffectData.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSlotScene.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>
