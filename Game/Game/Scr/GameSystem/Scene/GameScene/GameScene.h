@@ -42,6 +42,11 @@ public:
 	void Draw(void)		override;	// 描画
 	void Release(void)	override;	// 解放
 
+public:
+
+	// このスロットのセーブデータから始める（PushScene / ChangeScene の前に呼ぶ。呼ばなければ「はじめから」）
+	void SetLoadSlot(int slot) { loadSlot_ = slot; }
+
 private:
 
 	// ---------- トレーナー ----------
@@ -66,7 +71,8 @@ private:
 	void DrawHealSpot(void);					// 回復スポットのアニメーションを描く
 	void DrawHealMessage(void) const;			// 「回復した」メッセージを描く
 
-	bool SaveGame(void);						// セーブする（成功したらtrue）
+	bool SaveGame(void);						// セーブする（成功したらtrue）。保存先は currentSlot_（なければ空きスロット）
+	bool LoadGame(int slot);					// 指定スロットのセーブデータを読み込む（成功したらtrue）
 	void StartBattle(int monsterId, int level);	// バトルシーンを積む
 	void StartStory(const std::string& scriptPath);	// ストーリー（ノベルパート）を再生する
 	void CheckBattleResult(void);				// バトル終了後の結果を受け取って処理する
@@ -90,6 +96,11 @@ private:
 	static const int DEFEAT_FADE_FRAMES = 30;	// 暗転・明転にかけるフレーム数
 
 	int mainScreenId_ = 0;
+
+	// セーブスロット
+	int loadSlot_ = -1;			// 始めるときに読み込むスロット（-1 なら「はじめから」）
+	int currentSlot_ = -1;		// 今のプレイの保存先スロット（-1 なら、最初のセーブで空きスロットを使う）
+	int playFrames_ = 0;		// プレイ時間（フレーム数。60で割ると秒）
 
 	Player* player_ = nullptr;
 

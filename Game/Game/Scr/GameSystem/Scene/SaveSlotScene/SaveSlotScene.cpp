@@ -295,7 +295,7 @@ void SaveSlotScene::Draw(void)
 			? "このスロットに うわがきしますか？"
 			: "このセーブデータを さくじょしますか？";
 		DrawFormatString(bx1 + 24, by1 + 28, white, "%s", text);
-		DrawFormatString(bx1 + 90, by1 + 90, confirmYes_ ? yellow : gray, "%s はい", confirmYes_ ? "▶" : "　");
-		DrawFormatString(bx1 + 230, by1 + 90, confirmYes_ ? gray : yellow, "%s いいえ", confirmYes_ ? "　" : "▶");
+		DrawFormatString(bx1 + 90, by1 + 90, confirmYes_ ? yellow : gray, "%s はい", confirmYes_ ? ">" : "　");
+		DrawFormatString(bx1 + 230, by1 + 90, confirmYes_ ? gray : yellow, "%s いいえ", confirmYes_ ? "　" : ">");
 	}
 }

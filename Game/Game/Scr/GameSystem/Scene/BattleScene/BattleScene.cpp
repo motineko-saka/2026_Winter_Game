@@ -86,6 +86,33 @@ namespace
 		default:					return "";
 		}
 	}
+
+	// 技・モンスターのタイプ名
+	const char* ElementText(ElementType t)
+	{
+		switch (t)
+		{
+		case ElementType::FIRE:			return "炎";
+		case ElementType::WATER:		return "水";
+		case ElementType::WIND:			return "風";
+		case ElementType::NORMAL:		return "ノーマル";
+		case ElementType::JEWELRY:		return "宝石";
+		case ElementType::MACHINE:		return "機械";
+		case ElementType::SPIRIT:		return "霊";
+		case ElementType::LIGHT:		return "光";
+		case ElementType::DARK:			return "闇";
+		case ElementType::DRAGON:		return "龍";
+		case ElementType::SOUND:		return "音";
+		case ElementType::ILLUSION:		return "幻";
+		case ElementType::KARMA:		return "業";
+		case ElementType::ICE:			return "氷";
+		case ElementType::POISON:		return "毒";
+		case ElementType::SOIL:			return "土";
+		case ElementType::MARTIAL_COMBAT:	return "武闘";
+		case ElementType::GOD:			return "神";
+		default:						return "－";
+		}
+	}
 }
 
 BattleScene::BattleScene(void)
@@ -137,6 +164,8 @@ void BattleScene::Init(void)
 	hidden_ = { false, false };
 	steps_.clear();
 	learnQueue_.clear();
+	learnMons_.clear();
+	participated_.clear();
 	evolveQueue_.clear();
 	evolveState_ = EvolveState::NONE;
 	evolveBegun_ = false;
@@ -185,6 +214,7 @@ void BattleScene::Init(void)
 	activeIndex_ = first;
 	SetCombatant(PLAYER, party_->Get(first));
 	SetCombatant(ENEMY, &enemy_);
+	ResetParticipants();
 
 	// ボール演出の設定を外部ファイルから読む（無ければ仮のボールで進む）
 	ballData_.Load(BALL_EFFECT_CSV);
@@ -432,6 +462,8 @@ void BattleScene::Release(void)
 	images_.clear();
 	steps_.clear();
 	learnQueue_.clear();
+	learnMons_.clear();
+	participated_.clear();
 	evolveQueue_.clear();
 	evolveState_ = EvolveState::NONE;
 	evolveBegun_ = false;
@@ -1119,7 +1151,7 @@ void BattleScene::OnFaint(int side)
 		// トレーナーに次のモンスターがいるなら、経験値のあとに次を出す
 		if (trainer_ != nullptr && result_ == Result::NONE && HasNextEnemy())
 		{
-			Push([this, exp]() { GainPlayerExp(exp); });
+			Push([this, exp]() { GainPartyExp(exp); });
 			Push([this]() { SendNextEnemy(); });
 			return;
 		}
@@ -1128,7 +1160,7 @@ void BattleScene::OnFaint(int side)
 		{
 			result_ = Result::WIN;
 		}
-		Push([this, exp]() { GainPlayerExp(exp); });
+		Push([this, exp]() { GainPartyExp(exp); });
 		if (trainer_ != nullptr)
 		{
 			Push([this]() { OnTrainerDefeated(); });
@@ -1151,9 +1183,21 @@ void BattleScene::OnFaint(int side)
 	}
 }
 
-void BattleScene::GainPlayerExp(int amount)
+// 戦闘に出た個体は満額、出ていない個体は2/3。ひんしの個体はもらえない。
+// 1匹ごとにステップを積むので、メッセージは1匹ずつ順に出る。
+void BattleScene::GainPartyExp(int amount)
 {
-	MonsterInstance* p = side_[PLAYER].mon;
+	for (int i = 0; i < party_->GetCount(); i++)
+	{
+		const bool joined = (i < static_cast<int>(participated_.size())) && participated_[i];
+		const int gain = joined ? amount : std::max(1, amount * 2 / 3);
+		Push([this, i, gain]() { GainMonsterExp(i, gain); });
+	}
+}
+
+void BattleScene::GainMonsterExp(int partyIndex, int amount)
+{
+	MonsterInstance* p = party_->Get(partyIndex);
 	if (p == nullptr || p->currentHp <= 0)
 	{
 		return;
@@ -1182,6 +1226,7 @@ void BattleScene::GainPlayerExp(int amount)
 	for (int moveId : r.pendingMoves)
 	{
 		learnQueue_.push_back(moveId);	// 戦闘後の技選択で聞く
+		learnMons_.push_back(p);
 	}
 }
 
@@ -1346,6 +1391,7 @@ void BattleScene::LearnEvolutionMoves(MonsterInstance& mon)
 		else
 		{
 			learnQueue_.push_back(e.moveId);
+			learnMons_.push_back(&mon);
 		}
 	}
 }
@@ -1390,8 +1436,28 @@ void BattleScene::SwitchPlayer(int partyIndex)
 {
 	activeIndex_ = partyIndex;
 	SetCombatant(PLAYER, party_->Get(partyIndex));
+	MarkParticipant(partyIndex);
 	Say("ゆけっ！ " + side_[PLAYER].mon->nickname + "！");
 	StartSendOut(PLAYER);
+}
+
+void BattleScene::MarkParticipant(int partyIndex)
+{
+	if (partyIndex < 0)
+	{
+		return;
+	}
+	if (static_cast<int>(participated_.size()) <= partyIndex)
+	{
+		participated_.resize(partyIndex + 1, false);
+	}
+	participated_[partyIndex] = true;
+}
+
+void BattleScene::ResetParticipants(void)
+{
+	participated_.assign(party_->GetCount(), false);
+	MarkParticipant(activeIndex_);
 }
 
 void BattleScene::SetCombatant(int side, MonsterInstance* mon)
@@ -1882,9 +1948,10 @@ void BattleScene::UpdateLearnSelect(void)
 		return;
 	}
 
-	MonsterInstance* p = side_[PLAYER].mon;
+	MonsterInstance* p = learnMons_.front();
 	const int newMoveId = learnQueue_.front();
 	learnQueue_.pop_front();
+	learnMons_.pop_front();
 	const MoveData* newMove = data_->GetMove(newMoveId);
 	const std::string newName = (newMove != nullptr) ? newMove->name : "？";
 
@@ -2218,7 +2285,7 @@ void BattleScene::DrawCommandMenu(void) const
 	{
 		DrawFormatString(SX(450), SY(372 + i * 26), GetColor(0, 0, 0), "%s", items[i]);
 	}
-	DrawString(SX(425), SY(372 + cursor_ * 26), "▶", GetColor(0, 0, 0));
+	DrawString(SX(425), SY(372 + cursor_ * 26), ">", GetColor(0, 0, 0));
 }
 
 void BattleScene::DrawMoveMenu(void) const
@@ -2246,16 +2313,41 @@ void BattleScene::DrawMoveMenu(void) const
 	}
 
 	// カーソル（2列×2行の配置）
-	DrawString(SX(25 + (cursor_ % 2) * 220), SY(380 + (cursor_ / 2) * 36), "▶", black);
+	DrawString(SX(25 + (cursor_ % 2) * 220), SY(380 + (cursor_ / 2) * 36), ">", black);
 
 	// 選択中の技の詳細
 	const MoveSlot& sel = p->moves[cursor_];
 	const MoveData* selMove = (sel.moveId != MonsterParty::MOVE_NONE) ? data_->GetMove(sel.moveId) : nullptr;
 	if (selMove != nullptr)
 	{
-		DrawFormatString(SX(480), SY(380), black, "PP %d / %d", sel.currentPp, selMove->pp);
-		DrawFormatString(SX(480), SY(410), black, "威力 %d", selMove->power);
-		DrawFormatString(SX(480), SY(436), black, "命中 %d", selMove->accuracy);
+		DrawFormatString(SX(480), SY(372), black, "PP %d / %d", sel.currentPp, selMove->pp);
+		DrawFormatString(SX(480), SY(394), black, "タイプ %s", ElementText(selMove->type));
+		DrawFormatString(SX(480), SY(416), black, "威力 %d 命中 %d", selMove->power, selMove->accuracy);
+
+		// 相手モンスターへの相性（ダメージを与える技のみ）
+		const Combatant& foe = side_[ENEMY];
+		if (selMove->power > 0 && foe.master != nullptr)
+		{
+			const float eff = data_->GetTypeEffectiveness(selMove->type, foe.master->type1, foe.master->type2);
+			const char* text = "等倍";
+			unsigned int color = black;
+			if (eff <= 0.0f)
+			{
+				text = "効果なし";
+				color = GetColor(120, 120, 120);
+			}
+			else if (eff > 1.0f)
+			{
+				text = "効果抜群";
+				color = GetColor(220, 50, 40);
+			}
+			else if (eff < 1.0f)
+			{
+				text = "いまひとつ";
+				color = GetColor(50, 90, 200);
+			}
+			DrawFormatString(SX(480), SY(438), color, "%s", text);
+		}
 	}
 }
 
@@ -2289,13 +2381,13 @@ void BattleScene::DrawPartyMenu(void) const
 			DrawString(SX(330), y, "(戦闘中)", color);
 		}
 	}
-	DrawString(SX(80), SY(48 + cursor_ * 48), "▶", black);
+	DrawString(SX(80), SY(48 + cursor_ * 48), ">", black);
 }
 
 void BattleScene::DrawLearnMenu(void) const
 {
 	const unsigned int black = GetColor(0, 0, 0);
-	const MonsterInstance* p = side_[PLAYER].mon;
+	const MonsterInstance* p = learnMons_.front();
 	const MoveData* newMove = data_->GetMove(learnQueue_.front());
 
 	DrawMessageBox(p->nickname + "は " + (newMove != nullptr ? newMove->name : "？")
@@ -2342,7 +2434,7 @@ void BattleScene::DrawBagMenu(void) const
 		DrawFormatString(SX(330), y, black, "%s", item->name.c_str());
 		DrawFormatString(SX(540), y, black, "x%2d", inventory_->GetCount(id));
 	}
-	DrawString(SX(300), SY(36 + (cursor_ - first) * 34), "▶", black);
+	DrawString(SX(300), SY(36 + (cursor_ - first) * 34), ">", black);
 	if (first > 0)
 	{
 		DrawString(SX(595), SY(24), "↑", black);
@@ -2375,7 +2467,7 @@ void BattleScene::DrawEvolve(void) const
 			const MonsterMasterData* m = data_->GetMonster(evolveCur_.candidates[i]);
 			DrawFormatString(SX(430), SY(75 + i * 30), black, "%s", (m != nullptr) ? m->name.c_str() : "？");
 		}
-		DrawString(SX(405), SY(75 + cursor_ * 30), "▶", black);
+		DrawString(SX(405), SY(75 + cursor_ * 30), ">", black);
 
 		DrawMessageBox("どの すがたに しんかする？");
 		DrawString(SX(24), SY(430), "BACKキー：しんかを やめる", GetColor(120, 120, 120));
@@ -2475,6 +2567,7 @@ void BattleScene::SendNextEnemy(void)
 	enemyIndex_++;
 	enemy_ = enemyParty_[enemyIndex_];
 	SetCombatant(ENEMY, &enemy_);
+	ResetParticipants();	// 新しい相手：ここから出た個体だけが満額
 
 	Say(trainer_->name + "は " + enemy_.nickname + "を くりだした！");
 	StartSendOut(ENEMY);

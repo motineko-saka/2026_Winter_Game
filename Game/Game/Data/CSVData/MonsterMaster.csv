@@ -5,7 +5,7 @@
 4,ルファウ,FIRE,NORMAL,60,40,60,30,FAST,150,150,,Data/Image/Monster/4/004_flont.png,Data/Image/Monster/4/004_back.png,,
 5,ガルハウンド,FIRE,NORMAL,90,50,80,30,MEDIUM,140,5,,Data/Image/Monster/5/005_flont.png,Data/Image/Monster/5/005_back.png,,
 6,レガルフレア,FIRE,NORMAL,150,70,120,30,MEDIUM,210,5,,Data/Image/Monster/6/006_flont.png,Data/Image/Monster/6/006_back.png,,
-7,ウィリュウ,WATER,DRAGON,50,50,50,50,FAST,150,150,,Data/Image/Monster/7/007_flont.png,Data/Image/Monster/7/007_back.png,,
+7,ウィリュウ,WATER,,50,50,50,50,FAST,150,150,,Data/Image/Monster/7/007_flont.png,Data/Image/Monster/7/007_back.png,,
 8,ミディリュウ,WATER,DRAGON,70,70,70,70,MEDIUM,140,5,,Data/Image/Monster/8/008_flont.png,Data/Image/Monster/8/008_back.png,,
 9,サイリュウ,WATER,DRAGON,90,90,90,90,MEDIUM,210,5,,Data/Image/Monster/9/009_flont.png,Data/Image/Monster/9/009_back.png,,
 10,マシュポ,NORMAL,,60,30,60,20,FAST,100,200,,Data/Image/Monster/10/010_flont.png,Data/Image/Monster/10/010_back.png,,

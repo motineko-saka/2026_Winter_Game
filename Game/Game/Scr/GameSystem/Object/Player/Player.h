@@ -25,6 +25,9 @@ public:
 	int GetWorldPosX() const { return Utility::Round(image_.pos.x); }
 	int GetWorldPosY() const { return Utility::Round(image_.pos.y); }
 
+	// ワールド座標の設定（セーブデータの読み込みなどで使う）
+	void SetWorldPos(float x, float y) { image_.pos.x = x; image_.pos.y = y; }
+
 private:
 	// 状態の関数
 	static void StateNormal(ObjectBase& obj);

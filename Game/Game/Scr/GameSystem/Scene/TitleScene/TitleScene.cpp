@@ -100,8 +100,8 @@ void TitleScene::Draw(void)
 	GetDrawScreenSize(&sw, &sh);
 
 	const char* items[] = { "はじめから", "つづきから" };
-	const int white = GetColor(255, 255, 255);
-	const int yellow = GetColor(255, 230, 120);
+	const int white = GetColor(0, 0, 0);
+	const int yellow = GetColor(255, 0, 0);
 	const int x = sw / 2 - 60;
 	const int y = sh - 160;
 
@@ -109,7 +109,7 @@ void TitleScene::Draw(void)
 	{
 		const bool selected = (i == cursor_);
 		DrawFormatString(x, y + i * 36, selected ? yellow : white,
-			"%s %s", selected ? "▶" : "　", items[i]);
+			"%s %s", selected ? ">" : "　", items[i]);
 	}
 }
 

@@ -56,7 +56,7 @@ namespace
 
 	bool IsDecide(void)
 	{
-		return Trg(KEY_INPUT_RETURN);
+		return Trg(KEY_INPUT_RETURN) || Trg(KEY_INPUT_SPACE);
 	}
 
 	bool IsCancel(void)

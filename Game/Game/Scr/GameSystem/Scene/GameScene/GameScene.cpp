@@ -12,6 +12,7 @@
 #include "../MapScene/MapScene.h"
 #include "../GameClerScene/GameClerScene.h"
 #include "../NovelScene/NovelScene.h"
+#include "../SaveSlotScene/SaveSystem.h"
 #include "../../../AppSystem/InputManager/InputManager.h"
 #include "../../Object/Player/Player.h"
 #include "../../../AppSystem/Camera/Camera2D.h"
@@ -379,6 +380,8 @@ void GameScene::Init(void)
 	trainerTileOverride_.clear();
 	trainerEventPhase_ = TrainerEventPhase::NONE;
 	healMessageTimer_ = 0;
+	currentSlot_ = -1;
+	playFrames_ = 0;
 
 	// テスト用：Item.csv の ID 1〜5 を5個ずつ持たせる（存在するIDだけ）
 	// ※本番では、ショップや拾得で増える形に差し替える
@@ -426,10 +429,20 @@ void GameScene::LoadEnd(void)
 
 	// 初期化
 	Init();
+
+	// 「つづきから」のときは、初期化のあとにセーブデータを上書きして読み込む
+	if (loadSlot_ >= 0)
+	{
+		LoadGame(loadSlot_);
+		loadSlot_ = -1;
+	}
 }
 
 void GameScene::Update(void)
 {
+	// プレイ時間
+	playFrames_++;
+
 	// バトルが終わっていたら、結果を受け取って処理する
 	CheckBattleResult();
 
@@ -817,18 +830,26 @@ void GameScene::HealParty(void)
 
 bool GameScene::SaveGame(void)
 {
-	// 保存先フォルダを作る（すでにあれば何もしない）
-	CreateDirectoryA("Data/Save", NULL);
+	// 保存先：今のプレイのスロット。まだ決まっていなければ空きスロット
+	int slot = currentSlot_;
+	if (!SaveSystem::IsValidSlot(slot))
+	{
+		slot = SaveSystem::FindEmptySlot();
+	}
+	if (slot < 0 || !SaveSystem::PrepareSlot(slot))
+	{
+		return false;		// 空きスロットがない、またはフォルダを作れなかった
+	}
 
 	// 手持ちとバッグ
 	bool ok = true;
-	ok = monsterParty_.Save("Data/Save/party.csv") && ok;
-	ok = inventory_.Save("Data/Save/inventory.csv") && ok;
-	ok = flags_.Save("Data/Save/flags.csv") && ok;	// ゲーム全体のフラグ
+	ok = monsterParty_.Save(SaveSystem::SlotFile(slot, "party.csv").c_str()) && ok;
+	ok = inventory_.Save(SaveSystem::SlotFile(slot, "inventory.csv").c_str()) && ok;
+	ok = flags_.Save(SaveSystem::SlotFile(slot, "flags.csv").c_str()) && ok;	// ゲーム全体のフラグ
 
 	// ゲームの進行状態（今いるステージとプレイヤーの位置）
 	// いったん別名で書いてから差し替える（書き込み途中で失敗しても元のセーブが壊れない）
-	const std::string path = "Data/Save/game.csv";
+	const std::string path = SaveSystem::SlotFile(slot, "game.csv");
 	const std::string tmpPath = path + ".tmp";
 	{
 		std::ofstream ofs(tmpPath, std::ios::trunc);
@@ -868,7 +889,91 @@ bool GameScene::SaveGame(void)
 	std::remove(path.c_str());
 	ok = (std::rename(tmpPath.c_str(), path.c_str()) == 0) && ok;
 
+	// 最後に meta.csv を書く（meta がある＝セーブ済みスロット。途中で失敗したら「あき」のまま）
+	if (ok)
+	{
+		SaveSystem::SlotInfo info;
+		info.savedAt = SaveSystem::NowString();
+		info.playSeconds = playFrames_ / 60;
+		info.stageId = StageManager::GetInstance()->GetCurrentStageId();
+		info.partyCount = monsterParty_.GetCount();
+		info.money = money_;
+		ok = SaveSystem::WriteInfo(slot, info);
+	}
+
+	if (ok)
+	{
+		currentSlot_ = slot;	// 次からは同じスロットに上書きする
+	}
 	return ok;
+}
+
+bool GameScene::LoadGame(int slot)
+{
+	SaveSystem::SlotInfo info;
+	if (!SaveSystem::ReadInfo(slot, info))
+	{
+		return false;
+	}
+
+	// game.csv を先に読んで、壊れていたら何も変えずに終わる
+	std::ifstream ifs(SaveSystem::SlotFile(slot, "game.csv"));
+	if (!ifs.is_open())
+	{
+		return false;
+	}
+	std::string header, line2, line3;
+	std::getline(ifs, header);
+	std::getline(ifs, line2);
+	std::getline(ifs, line3);
+	if (header.compare(0, 4, "GAME") != 0)
+	{
+		return false;
+	}
+
+	int stageId = 0;
+	int posX = 0;
+	int posY = 0;
+	int money = 0;
+	if (sscanf_s(line2.c_str(), "%d,%d,%d,%d", &stageId, &posX, &posY, &money) != 4)
+	{
+		return false;
+	}
+
+	std::set<int> defeated;
+	for (const std::string& token : SplitBy(line3, ','))
+	{
+		if (!token.empty() && token != "\r")
+		{
+			defeated.insert(std::atoi(token.c_str()));
+		}
+	}
+
+	// 手持ち・バッグ・フラグを読み込む（マスターデータは Load() で読み込み済み）
+	bool ok = true;
+	ok = monsterParty_.Load(SaveSystem::SlotFile(slot, "party.csv"), monsterData_) && ok;
+	ok = inventory_.Load(SaveSystem::SlotFile(slot, "inventory.csv"), itemData_) && ok;	// ★要確認：Inventory.h の Load の引数
+	ok = flags_.Load(SaveSystem::SlotFile(slot, "flags.csv").c_str()) && ok;
+	if (!ok)
+	{
+		return false;
+	}
+
+	// 進行状態を反映する
+	StageManager::GetInstance()->ChangeStage(stageId);
+	player_->SetWorldPos(static_cast<float>(posX), static_cast<float>(posY));
+	money_ = money;
+	defeatedTrainers_ = defeated;
+	playFrames_ = info.playSeconds * 60;
+	currentSlot_ = slot;					// このあとのセーブは、このスロットに上書きする
+
+	// ステージが変わったので、通行不可マスやイベントの判定をやり直す
+	lastStageId_ = -1;
+	autoFired_.clear();
+	lastEventTileX_ = -1;
+	lastEventTileY_ = -1;
+	Camera2D::GetInstance()->ScreenMove(player_->GetWorldPosX(), player_->GetWorldPosY());
+	return true;
 }
 
 void GameScene::StartTrainerBattle(const TrainerSpawn& spawn)

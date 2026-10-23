@@ -237,7 +237,8 @@ private:
 	bool HasNextEnemy(void) const;			// トレーナーの手持ちに、次に出せるモンスターがいるか
 	void SendNextEnemy(void);				// トレーナーが次のモンスターを出す
 	void OnTrainerDefeated(void);			// トレーナーに勝ったときのメッセージと賞金
-	void GainPlayerExp(int amount);
+	void GainPartyExp(int amount);			// 手持ち全員に経験値を配る（参加した個体は満額、それ以外は2/3）
+	void GainMonsterExp(int partyIndex, int amount);	// 手持ち1匹に経験値を与える
 	void CheckEvolution(MonsterInstance& mon, int level);	// レベルアップ後に進化できるか調べて、できれば待ち行列へ
 	bool StartNextEvolve(void);				// 待ち行列から、始められる進化を探して始める（なければfalse）
 	bool StartEvolve(void);					// 待ち行列の先頭の進化を始める（始められなければfalse）
@@ -246,6 +247,8 @@ private:
 	void CancelEvolve(void);				// 進化をキャンセルする
 	void LearnEvolutionMoves(MonsterInstance& mon);	// 進化後の種族がそのレベルで覚える技を習得させる
 	void SwitchPlayer(int partyIndex);
+	void MarkParticipant(int partyIndex);	// 今の相手との戦いに出たことを記録する
+	void ResetParticipants(void);			// 相手が変わったので記録をリセット（今場に出ている個体だけ参加扱い）
 	void SetCombatant(int side, MonsterInstance* mon);
 
 	// ---------- 入力 ----------
@@ -374,6 +377,8 @@ private:
 	size_t insertIdx_ = 0;
 	bool needSwitch_ = false;		// ひんしになったので交代先を選ばせる
 	std::deque<int> learnQueue_;	// 覚えたいが枠が埋まっている技
+	std::deque<MonsterInstance*> learnMons_;	// learnQueue_ と同じ順：その技を覚えたいモンスター
+	std::vector<bool> participated_;	// 今の相手モンスターとの戦いに出た手持ち（手持ちの番号で参照）
 
 	// 進化
 	std::deque<EvolveEntry> evolveQueue_;			// 進化待ち（戦闘後に順番に処理する）
