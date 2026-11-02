@@ -10,6 +10,7 @@ class MonsterData;
 class MonsterParty;
 class ItemData;
 class Inventory;
+class MonsterBox;
 
 // ESCで開くメニュー画面
 //   てもち／もちもの／マップ／セーブ／オプション／タイトルへ もどる
@@ -41,6 +42,10 @@ public:
 	void Setup(const MonsterData* data, MonsterParty* party,
 		const ItemData* items, Inventory* inventory,
 		std::function<bool(void)> saveFunc);
+
+	// メニューの「ボックス」で開くボックス（PushScene の前に呼ぶ）
+	//   渡さない（nullptr）と、「ボックス」を選んでも開けない
+	void SetBox(MonsterBox* box) { box_ = box; }
 
 private:
 
@@ -106,6 +111,7 @@ private:
 	const MonsterData* data_ = nullptr;
 	MonsterParty* party_ = nullptr;
 	const ItemData* items_ = nullptr;
+	MonsterBox* box_ = nullptr;			// ボックス（外部から渡される）
 	Inventory* inventory_ = nullptr;
 	std::function<bool(void)> saveFunc_;
 

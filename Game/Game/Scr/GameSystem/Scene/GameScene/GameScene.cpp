@@ -12,6 +12,8 @@
 #include "../MapScene/MapScene.h"
 #include "../GameClerScene/GameClerScene.h"
 #include "../NovelScene/NovelScene.h"
+#include "../ShopScene/ShopScene.h"
+#include "../BoxScene/BoxScene.h"
 #include "../SaveSlotScene/SaveSystem.h"
 #include "../../../AppSystem/InputManager/InputManager.h"
 #include "../../Object/Player/Player.h"
@@ -366,9 +368,11 @@ void GameScene::Init(void)
 
 	itemData_.Init();
 	inventory_.Init();
+	monsterBox_.Init();
 
 	trainerData_.Init();
 	eventData_.Init();
+	shopData_.Init();
 	flags_.Clear();
 	autoFired_.clear();
 	lastEventTileX_ = -1;
@@ -414,6 +418,7 @@ void GameScene::Load(void)
 	itemData_.Load();
 	trainerData_.Load();
 	eventData_.Load();
+	shopData_.Load();
 
 	// 回復スポットの画像（読み込めなかったときは仮の丸で表示される）
 	healSpotFrames_.fill(-1);
@@ -473,6 +478,7 @@ void GameScene::Update(void)
 		auto pause = std::make_shared<PauseScene>();
 		pause->Setup(&monsterData_, &monsterParty_, &itemData_, &inventory_,
 			[this]() { return SaveGame(); });
+		pause->SetBox(&monsterBox_);		// メニューの「ボックス」で開けるように
 		SceneManager::GetInstance()->PushScene(pause);
 	}
 
@@ -625,6 +631,8 @@ void GameScene::Release(void)
 	trainerImages_.clear();
 	trainerData_.Release();
 	eventData_.Release();
+	shopData_.Release();
+	monsterBox_.Release();
 
 	for (int& h : healSpotFrames_)
 	{
@@ -645,6 +653,7 @@ void GameScene::StartBattle(int monsterId, int level)
 	battle_ = std::make_shared<BattleScene>();
 	battle_->Setup(&monsterData_, &monsterParty_, monsterId, level);
 	battle_->SetItems(&itemData_, &inventory_);		// バッグを使えるようにする
+	battle_->SetBox(&monsterBox_);					// 手持ちが満員のときの捕獲先（ボックス）
 	battle_->SetPlayerImages({
 	"Data/Image/Player/1.png",
 	"Data/Image/Player/2.png",
@@ -660,6 +669,28 @@ void GameScene::StartStory(const std::string& scriptPath)
 	auto novel = std::make_shared<NovelScene>();
 	novel->Setup(scriptPath, &monsterData_, &monsterParty_, &itemData_, &inventory_, &flags_);
 	SceneManager::GetInstance()->PushScene(novel);
+}
+
+void GameScene::OpenShop(int shopId)
+{
+	// 品ぞろえが見つからなくても画面は開く（「いま うれるものは ありません」と出る）
+	std::vector<int> stock;
+	const ShopMasterData* shop = shopData_.GetShop(shopId);
+	if (shop != nullptr)
+	{
+		stock = shop->itemIds;
+	}
+
+	auto shopScene = std::make_shared<ShopScene>();
+	shopScene->Setup(&itemData_, &inventory_, &money_, stock);
+	SceneManager::GetInstance()->PushScene(shopScene);
+}
+
+void GameScene::OpenBox(void)
+{
+	auto boxScene = std::make_shared<BoxScene>();
+	boxScene->Setup(&monsterData_, &monsterParty_, &monsterBox_);
+	SceneManager::GetInstance()->PushScene(boxScene);
 }
 
 void GameScene::CheckBattleResult(void)
@@ -846,6 +877,7 @@ bool GameScene::SaveGame(void)
 	ok = monsterParty_.Save(SaveSystem::SlotFile(slot, "party.csv").c_str()) && ok;
 	ok = inventory_.Save(SaveSystem::SlotFile(slot, "inventory.csv").c_str()) && ok;
 	ok = flags_.Save(SaveSystem::SlotFile(slot, "flags.csv").c_str()) && ok;	// ゲーム全体のフラグ
+	ok = monsterBox_.Save(SaveSystem::SlotFile(slot, "box.csv")) && ok;			// ボックス
 
 	// ゲームの進行状態（今いるステージとプレイヤーの位置）
 	// いったん別名で書いてから差し替える（書き込み途中で失敗しても元のセーブが壊れない）
@@ -954,6 +986,21 @@ bool GameScene::LoadGame(int slot)
 	ok = monsterParty_.Load(SaveSystem::SlotFile(slot, "party.csv"), monsterData_) && ok;
 	ok = inventory_.Load(SaveSystem::SlotFile(slot, "inventory.csv"), itemData_) && ok;	// ★要確認：Inventory.h の Load の引数
 	ok = flags_.Load(SaveSystem::SlotFile(slot, "flags.csv").c_str()) && ok;
+
+	// ボックス（box.csv が無い古いセーブは、空のボックスとして始める）
+	{
+		const std::string boxPath = SaveSystem::SlotFile(slot, "box.csv");
+		std::ifstream boxFile(boxPath);
+		if (boxFile.is_open())
+		{
+			boxFile.close();
+			ok = monsterBox_.Load(boxPath, monsterData_) && ok;
+		}
+		else
+		{
+			monsterBox_.Init();
+		}
+	}
 	if (!ok)
 	{
 		return false;
@@ -1184,7 +1231,19 @@ void GameScene::RunEvent(const EventSpawn& e)
 	{
 		autoFired_.insert(e.id);
 	}
-	StartStory(e.script);
+	// 台本欄が「@shop:ID」ならショップ、「@box」ならボックスを開く。それ以外は台本（ノベル）を再生する
+	if (e.script.compare(0, 6, "@shop:") == 0)
+	{
+		OpenShop(std::atoi(e.script.c_str() + 6));
+	}
+	else if (e.script == "@box")
+	{
+		OpenBox();
+	}
+	else
+	{
+		StartStory(e.script);
+	}
 }
 
 bool GameScene::CheckEvents(void)

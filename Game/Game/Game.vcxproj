@@ -150,8 +150,10 @@
     <ClCompile Include="Scr\GameSystem\Object\NPC\Trainerdata.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\ObjectBase.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Player\Player.cpp" />
+    <ClCompile Include="Scr\GameSystem\Object\Shop\ShopData.cpp" />
     <ClCompile Include="Scr\GameSystem\Object\Stage\StageManager.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\BattleScene\BattleScene.cpp" />
+    <ClCompile Include="Scr\GameSystem\Scene\BoxScene\BoxScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GameClerScene\GameClerScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GameEndScene\GameEndScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\GameScene\GameScene.cpp" />
@@ -163,6 +165,7 @@
     <ClCompile Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneBase.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\SceneManager.cpp" />
+    <ClCompile Include="Scr\GameSystem\Scene\ShopScene\ShopScene.cpp" />
     <ClCompile Include="Scr\GameSystem\Scene\TitleScene\TitleScene.cpp" />
     <ClCompile Include="Scr\main.cpp" />
     <ClCompile Include="Scr\Utility\Utility.cpp" />
@@ -193,8 +196,10 @@
     <ClInclude Include="Scr\GameSystem\Object\ObjectBase.h" />
     <ClInclude Include="Scr\GameSystem\Object\Player\Player.h" />
     <ClInclude Include="Scr\GameSystem\Object\Player\PlayerParam.h" />
+    <ClInclude Include="Scr\GameSystem\Object\Shop\ShopData.h" />
     <ClInclude Include="Scr\GameSystem\Object\Stage\StageManager.h" />
     <ClInclude Include="Scr\GameSystem\Scene\BattleScene\BattleScene.h" />
+    <ClInclude Include="Scr\GameSystem\Scene\BoxScene\BoxScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GameClerScene\GameClerScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GameEndScene\GameEndScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\GameScene\GameScene.h" />
@@ -207,6 +212,7 @@
     <ClInclude Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneBase.h" />
     <ClInclude Include="Scr\GameSystem\Scene\SceneManager.h" />
+    <ClInclude Include="Scr\GameSystem\Scene\ShopScene\ShopScene.h" />
     <ClInclude Include="Scr\GameSystem\Scene\TitleScene\TitleScene.h" />
     <ClInclude Include="Scr\Utility\Utility.h" />
   </ItemGroup>

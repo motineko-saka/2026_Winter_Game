@@ -14,6 +14,7 @@
 
 #include "../SceneManager.h"
 #include "../MapScene/MapScene.h"
+#include "../BoxScene/BoxScene.h"
 #include "../TitleScene/TitleScene.h"
 
 namespace
@@ -23,6 +24,7 @@ namespace
 	{
 		MENU_PARTY,
 		MENU_BAG,
+		MENU_BOX,
 		MENU_MAP,
 		MENU_SAVE,
 		MENU_OPTION,
@@ -32,7 +34,7 @@ namespace
 
 	const char* const MENU_LABELS[MENU_COUNT] =
 	{
-		"てもち", "もちもの", "マップ", "セーブ", "オプション", "タイトルへ もどる",
+		"てもち", "もちもの", "ボックス", "マップ", "セーブ", "オプション", "タイトルへ もどる",
 	};
 
 	// てもちを選んだあとの項目
@@ -240,6 +242,20 @@ void PauseScene::UpdateMenu(void)
 		RefreshBagList();
 		bagCursor_ = 0;
 		mode_ = Mode::BAG;
+		break;
+
+	case MENU_BOX:
+		// ボックス画面を重ねて開く（閉じるとこのメニューに戻る）
+		if (data_ == nullptr || party_ == nullptr || box_ == nullptr)
+		{
+			ShowMessage({ "ボックスは いま つかえません" }, Mode::MENU);
+		}
+		else
+		{
+			auto boxScene = std::make_shared<BoxScene>();
+			boxScene->Setup(data_, party_, box_);
+			SceneManager::GetInstance()->PushScene(boxScene);
+		}
 		break;
 
 	case MENU_MAP:

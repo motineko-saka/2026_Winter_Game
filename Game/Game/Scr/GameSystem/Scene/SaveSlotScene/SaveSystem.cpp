@@ -10,7 +10,7 @@ namespace
 	const char* SAVE_ROOT = "Data/Save";
 
 	// スロットの中にあるファイル（削除用）。meta.csv を最初に消す＝先に「未セーブ」扱いにする
-	const char* SLOT_FILES[] = { "meta.csv", "party.csv", "inventory.csv", "flags.csv", "game.csv", "game.csv.tmp" };
+	const char* SLOT_FILES[] = { "meta.csv", "party.csv", "inventory.csv", "flags.csv", "box.csv", "game.csv", "game.csv.tmp" };
 }
 
 namespace SaveSystem

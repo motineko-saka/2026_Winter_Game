@@ -9,6 +9,7 @@
 #include "../../../AppSystem/Application/Application.h"
 #include "../../Object/Monster/MonsterParty.h"	
 #include "../../Object/Monster/MonsterGrowth.h"
+#include "../../Object/Monster/Monsterbox.h"
 #include "../../Object/Item/ItemData.h"
 #include "../../Object/Item/Inventory.h"
 #include "../../Object/Item/ItemUse.h"
@@ -703,9 +704,11 @@ bool BattleScene::CanCatch(std::string& reason) const
 		reason = "この モンスターは つかまえられない！";
 		return false;
 	}
-	if (party_->IsFull())
+	// 手持ちが満員でも、ボックスに空きがあれば捕まえられる（捕まえたらボックスへ送られる）
+	if (party_->IsFull() && (box_ == nullptr || box_->IsFull()))
 	{
-		reason = "てもちが いっぱいで つかまえられない！";
+		reason = (box_ == nullptr) ? "てもちが いっぱいで つかまえられない！"
+			: "てもちも ボックスも いっぱいで つかまえられない！";
 		return false;
 	}
 	return true;
@@ -832,12 +835,31 @@ void BattleScene::TryCatch(int itemId, double ballRate, const std::string& ballN
 
 	if (caught)
 	{
-		// 手持ちに加える（満員のときはそもそも投げられない）
-		party_->Add(enemy_);
-		// 手持ちの配列が再確保されても大丈夫なように、味方側のポインタを取り直す
-		side_[PLAYER].mon = party_->Get(activeIndex_);
+		// 手持ちに加える。満員なら、空きのあるボックスへ送る
+		// （両方とも満杯のときは、そもそも投げられない：CanCatch）
+		bool sentToBox = false;
+		std::string boxName;
+		if (party_->IsFull() && box_ != nullptr)
+		{
+			const int boxIndex = box_->FindEmptyBox();
+			if (boxIndex >= 0 && box_->Add(enemy_, boxIndex))
+			{
+				sentToBox = true;
+				boxName = box_->GetBoxName(boxIndex);
+			}
+		}
+		else
+		{
+			party_->Add(enemy_);
+			// 手持ちの配列が再確保されても大丈夫なように、味方側のポインタを取り直す
+			side_[PLAYER].mon = party_->Get(activeIndex_);
+		}
 		result_ = Result::CAUGHT;
 		PushSay("やった！ " + name + "を つかまえた！");
+		if (sentToBox)
+		{
+			PushSay(name + "は " + boxName + "に てんそうされた！");
+		}
 		return;
 	}
 

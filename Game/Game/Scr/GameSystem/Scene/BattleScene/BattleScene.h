@@ -12,6 +12,7 @@
 #include "../../Object/Monster/BallEffectData.h"
 
 class MonsterParty;
+class MonsterBox;
 class ItemData;
 class Inventory;
 struct TrainerMasterData;
@@ -59,6 +60,10 @@ public:
 
 	// バッグ（アイテム）を使えるようにする（PushScene の前に呼ぶ）
 	void SetItems(const ItemData* items, Inventory* inventory);
+
+	// 手持ちが満員のときに、捕まえたモンスターを送るボックス（PushScene の前に呼ぶ）
+	//   渡さない（nullptr）と、手持ちが満員のときは捕まえられない
+	void SetBox(MonsterBox* box) { box_ = box; }
 
 	// トレーナー戦の準備（PushScene の前に呼ぶ。Setup の代わりに使う）
 	//   ・相手の手持ちが順番に出てくる／ボールは使えない／逃げられない
@@ -358,6 +363,7 @@ private:
 	int runAttempts_ = 0;
 	const ItemData* items_ = nullptr;	// アイテムのマスターデータ（外部から渡される）
 	Inventory* inventory_ = nullptr;	// 所持アイテム（外部から渡される）
+	MonsterBox* box_ = nullptr;			// 捕まえたモンスターの送り先（手持ちが満員のとき。外部から渡される）
 	std::vector<int> bagList_;			// バッグに表示するアイテムID（戦闘中に使えるものだけ）
 	int usingItemId_ = 0;				// 使おうとしているアイテム（対象選択中）
 	int itemTarget_ = 0;				// アイテムを使う手持ちの番号

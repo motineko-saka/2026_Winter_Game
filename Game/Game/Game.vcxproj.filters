@@ -126,6 +126,15 @@
     <ClCompile Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="Scr\GameSystem\Scene\ShopScene\ShopScene.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Scr\GameSystem\Scene\BoxScene\BoxScene.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Scr\GameSystem\Object\Shop\ShopData.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Scr\Utility\Utility.h">
@@ -249,6 +258,15 @@
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="Scr\GameSystem\Scene\SaveSlotScene\SaveSystem.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Scr\GameSystem\Scene\ShopScene\ShopScene.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Scr\GameSystem\Scene\BoxScene\BoxScene.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Scr\GameSystem\Object\Shop\ShopData.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>

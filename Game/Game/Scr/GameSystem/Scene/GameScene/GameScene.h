@@ -11,6 +11,8 @@
 #include "../../Object/Monster/MonsterParty.h"
 #include "../../Object/Item/ItemData.h"
 #include "../../Object/Item/Inventory.h"
+#include "../../Object/Monster/Monsterbox.h"
+#include "../../Object/Shop/ShopData.h"
 #include "../../Object/NPC/TrainerData.h"
 #include "../../Flag/GameFlags.h"
 #include "../../Event/EventData.h"
@@ -75,6 +77,8 @@ private:
 	bool LoadGame(int slot);					// 指定スロットのセーブデータを読み込む（成功したらtrue）
 	void StartBattle(int monsterId, int level);	// バトルシーンを積む
 	void StartStory(const std::string& scriptPath);	// ストーリー（ノベルパート）を再生する
+	void OpenShop(int shopId);					// ショップ画面を開く（Event.csv の台本欄「@shop:ID」）
+	void OpenBox(void);							// ボックス画面を開く（Event.csv の台本欄「@box」）
 	void CheckBattleResult(void);				// バトル終了後の結果を受け取って処理する
 	void StartDefeat(void);						// 全滅演出を始める
 	void UpdateDefeat(void);					// 全滅演出の更新
@@ -109,6 +113,8 @@ private:
 
 	ItemData itemData_;			// アイテムのマスターデータ
 	Inventory inventory_;		// 所持アイテム（バッグ）
+	MonsterBox monsterBox_;		// ボックス（預けているモンスター。セーブ対象）
+	ShopData shopData_;			// ショップの品ぞろえ
 
 	// 進行中のバトル（終了後に結果を読むため、PopSceneされても持っておく）
 	std::shared_ptr<BattleScene> battle_;
