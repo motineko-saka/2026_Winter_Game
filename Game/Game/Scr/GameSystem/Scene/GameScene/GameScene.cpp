@@ -495,11 +495,11 @@ void GameScene::Update(void)
 	}
 
 	// ストーリーを再生（テスト用：Nキー。本番ではマップのイベントやNPCから StartStory を呼ぶ）
-	if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_N))
-	{
-		StartStory("Data/Story/prologue.txt");
-		return;
-	}
+	//if (InputManager::GetInstance()->IsTrgDown(KEY_INPUT_N))
+	//{
+	//	StartStory("Data/Story/prologue.txt");
+	//	return;
+	//}
 
 	// イベントの出現条件はフラグで変わるので、通行不可マスは毎フレーム作り直す
 	RebuildTrainerBlocks();
